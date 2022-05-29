@@ -1,0 +1,6 @@
+pandas
+scikit-surprise
+torch
+numpy
+sklearn
+matplotlib
