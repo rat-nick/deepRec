@@ -1,5 +1,4 @@
-from matplotlib import use
-from surprise import AlgoBase, PredictionImpossible, Trainset
+from surprise import AlgoBase, PredictionImpossible, Reader, Trainset
 from surprise.dataset import Dataset
 
 from sklearn.model_selection import train_test_split
@@ -71,19 +70,40 @@ class RBMAlgorithm(AlgoBase):
 
 
 if __name__ == "__main__":
-    data = Dataset.load_builtin("ml-1m")
-    items = data.build_full_trainset().n_items
+    Udata = Dataset.load_builtin("ml-1m")
+    fpath = "fullSet-5.txt"
+    # Udata = Dataset.load_from_file(fpath, reader=Reader(line_format="user item rating"))
+    Idata = Dataset.load_from_file(fpath, reader=Reader(line_format="item user rating"))
+    # items = data.build_full_trainset().n_items
 
-    algo = RBMAlgorithm(
+    Ualgo = RBMAlgorithm(
         verbose=True,
-        max_epoch=20,
-        n_hidden=200,
-        learning_rate=0.01,
+        max_epoch=200,
+        patience=10,
+        n_hidden=100,
+        learning_rate=0.001,
         l1=0.001,
         l2=0.001,
-        batch_size=100,
+        batch_size=10,
+        momentum=0.5,
+        early_stopping=True,
     )
-    algo.fit(data.build_full_trainset())
-    print(algo.model.rmse)
-    pred = algo.predict(str(234), str(1184))
-    print(pred)
+    Ualgo.fit(Idata.build_full_trainset())
+
+    # Ialgo = RBMAlgorithm(
+    #     verbose=True,
+    #     max_epoch=40,
+    #     n_hidden=100,
+    #     learning_rate=0.001,
+    #     l1=0.001,
+    #     l2=0.001,
+    #     batch_size=5,
+    #     momentum=0.3,
+    # )
+    # Ialgo.fit(Idata.build_full_trainset())
+    print(Ualgo.model.rmse)
+    while True:
+        u, i = map(int, input().split())
+        Upred = Ualgo.predict(str(u), str(i))
+        # Ipred = Ialgo.predict(str(i), str(u))
+        print(Upred, sep="\n")

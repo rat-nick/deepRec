@@ -1,10 +1,9 @@
-from audioop import mul
+from surprise import Trainset
+
 import torch
-from surprise.dataset import DatasetAutoFolds
 
 
-def ratingsToTensor(dataset) -> torch.Tensor:
-    trainset = dataset
+def ratingsToTensor(trainset: Trainset) -> torch.Tensor:
     scale = trainset.rating_scale[1] - trainset.rating_scale[0] + 1
     t = torch.zeros(trainset.n_users, trainset.n_items, scale)
 
