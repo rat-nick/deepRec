@@ -5,16 +5,26 @@ import torch.nn.functional as F
 
 
 class VAE(nn.Module):
-    def __init__(self, input_dim):
+    def __init__(
+        self,
+        input_dim,
+        latent_dim=10,
+        dropout=0.0,
+    ):
         super(VAE, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 1000)
-        self.fc2 = nn.Linear(1000, 500)
-        self.mu = nn.Linear(500, 200)
-        self.sigma = nn.Linear(500, 200)
+        # encoder
+        self.dense1 = nn.Linear(input_dim, 1000)
+        self.dense2 = nn.Linear(1000, 500)
+        self.dense3 = nn.Linear(500, 200)
 
-        self.fc4 = nn.Linear(200, 500)
-        self.fc5 = nn.Linear(500, 1000)
-        self.fc6 = nn.Linear(1000, input_dim)
+        # variational part used to sample latent representation
+        self.mu = nn.Linear(200, latent_dim)
+        self.sigma = nn.Linear(200, latent_dim)
+
+        # decoder
+        self.dense4 = nn.Linear(latent_dim, 500)
+        self.dense5 = nn.Linear(500, 1000)
+        self.dense6 = nn.Linear(1000, input_dim)
 
         self.training = True
 
