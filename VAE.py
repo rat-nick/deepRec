@@ -53,10 +53,10 @@ class VAE(nn.Module):
         return eps.mul(sigma).add_(mu)
 
     def forward(self, x):
-        mu, sigma = self.encoder(x)
-        z = self.reparametrize(mu, sigma)
+        mu, logvar = self.encoder(x)
+        z = self.reparametrize(mu, logvar)
         x = self.decoder(z)
-        return x, mu, sigma
+        return x, mu, logvar
 
 
 if __name__ == "__main__":
