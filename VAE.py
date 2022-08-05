@@ -1,4 +1,3 @@
-from pickle import TRUE
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -22,30 +21,27 @@ class VAE(nn.Module):
         self.sigma = nn.Linear(200, latent_dim)
 
         # decoder
-        self.dense4 = nn.Linear(latent_dim, 500)
-        self.dense5 = nn.Linear(500, 1000)
-        self.dense6 = nn.Linear(1000, input_dim)
+        self.dense4 = nn.Linear(latent_dim, 200)
+        self.dense5 = nn.Linear(200, 500)
+        self.dense6 = nn.Linear(500, 1000)
+        self.dense7 = nn.Linear(1000, input_dim)
 
         self.training = True
         self.dropout = dropout
 
     def encoder(self, x):
-        x = F.tanh(self.dense1(x))
-        x = F.dropout(x, self.dropout, self.training)
-        x = F.tanh(self.dense2(x))
-        x = F.dropout(x, self.dropout, self.training)
-        x = F.tanh(self.dense3(x))
-        x = F.dropout(x, self.dropout, self.training)
+        x = torch.tanh(self.dense1(x))
+        x = torch.tanh(self.dense2(x))
+        x = torch.tanh(self.dense3(x))
         return self.mu(x), self.sigma(x)
 
     def decoder(self, z):
-        z = F.tanh(self.dense4(z))
-        z = F.dropout(z, self.dropout, self.training)
-        z = F.tanh(self.dense5(z))
-        z = F.dropout(z, self.dropout, self.training)
-        z = self.dense6(z)
+        z = torch.tanh(self.dense4(z))
+        z = torch.tanh(self.dense5(z))
+        z = torch.tanh(self.dense6(z))
+        z = self.dense7(z)
         # TODO: might need to change output
-        return z
+        return torch.sigmoid(z)
 
     def reparametrize(self, mu, logvar):
         sigma = torch.exp(0.5 * logvar)
@@ -56,10 +52,13 @@ class VAE(nn.Module):
         mu, logvar = self.encoder(x)
         z = self.reparametrize(mu, logvar)
         x = self.decoder(z)
-        return x, mu, logvar
+        return x, z, mu, logvar
 
 
 if __name__ == "__main__":
     vae = VAE(10)
     x = torch.zeros(10)
-    print(vae.forward(x)[0])
+    output = vae.forward(x)[0]
+    print(output)
+    for i in vae.parameters():
+        print(i)
