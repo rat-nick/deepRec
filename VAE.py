@@ -30,15 +30,16 @@ class VAE(nn.Module):
         self.dropout = dropout
 
     def encoder(self, x):
-        x = torch.tanh(self.dense1(x))
-        x = torch.tanh(self.dense2(x))
-        x = torch.tanh(self.dense3(x))
+        x = torch.dropout(x, self.dropout, self.training)
+        x = torch.relu(self.dense1(x))
+        x = torch.relu(self.dense2(x))
+        x = torch.relu(self.dense3(x))
         return self.mu(x), self.sigma(x)
 
     def decoder(self, z):
-        z = torch.tanh(self.dense4(z))
-        z = torch.tanh(self.dense5(z))
-        z = torch.tanh(self.dense6(z))
+        z = torch.relu(self.dense4(z))
+        z = torch.relu(self.dense5(z))
+        z = torch.relu(self.dense6(z))
         z = self.dense7(z)
         # TODO: might need to change output
         return torch.sigmoid(z)

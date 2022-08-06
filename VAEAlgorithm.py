@@ -26,24 +26,22 @@ class VAEAlgorithm(AlgoBase):
 
     def fit(self, trainset: Trainset):
         AlgoBase.fit(self, trainset)
+
         self.trainset = trainset
-        self.train = DataLoader.implicitRatingsToTensor(trainset)
-        self.ratings = self.train
+        self.train = DataLoader.normalizedRatingsToTensor(trainset)
+        self.ratings = trainset.all_ratings()
         self.model = VAE(self.train.shape[1], self.latentDim, self.dropout)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learningRate)
 
         for epoch in range(1, self.epochs + 1):
             self.train = self.train[torch.randperm(self.train.shape[0])]
-            count = 0
-            sumLoss = 0
             losses = 0
             print(f"Epoch{epoch} :", end="")
             for i in range(0, self.train.shape[0], self.batchSize):
                 batch = self.train[i : i + self.batchSize]
-                loss = self.trainIter(self.optimizer, batch)
-                sumLoss += loss.item()
-                count += 1
-                losses += loss.item()
+                loss = self.trainIter(self.optimizer, batch, epoch)
+
+            losses += loss.item()
             print(losses / self.train.shape[0])
 
         self.model.training = False
@@ -52,16 +50,16 @@ class VAEAlgorithm(AlgoBase):
 
         for u in self.trainset.all_users():
             rec, _, _, _ = self.model(self.train[u])
-            self.predictions[u] = rec.detach().numpy()
+            self.predictions[u] = rec.detach().numpy() * 5
 
-    def trainIter(self, optimizer, batch):
+    def trainIter(self, optimizer, batch, epoch):
         rec, _, mu, logvar = self.model(batch)
         loss = elbo(rec, batch, mu, logvar)
 
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 3)
         optimizer.step()
-        # optimizer.zero_grad()
+        optimizer.zero_grad()
         return loss
 
     def estimate(self, u, i):
@@ -72,10 +70,11 @@ class VAEAlgorithm(AlgoBase):
 
 
 def elbo(x_hat, x, mu, logvar, anneal=1.0):
-    bce = -torch.mean(torch.sum(torch.log_softmax(x_hat, 1) * x), -1)
-    kld = -0.5 * torch.mean(torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1))
+    bce = torch.nn.CrossEntropyLoss()(x_hat, x)
+    # mse = torch.nn.MSELoss()(x_hat, x)
+    kld = -5e-1 * torch.mean(torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=-1))
 
-    return bce + anneal * kld
+    return torch.sum(bce + anneal * kld)
 
 
 if __name__ == "__main__":
