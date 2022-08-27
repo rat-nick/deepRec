@@ -7,7 +7,8 @@ from surprise import Dataset, Reader
 from DataLoader import DataLoader
 from RBMAlgorithm import RBMAlgorithm
 from VAEAlgorithm import VAEAlgorithm
-from AEAlgorithm import AEAlgorithm
+
+# from AEAlgorithm import AEAlgorithm
 
 # from models import RBM
 reader = Reader(line_format="user item rating", sep="\t")
@@ -38,7 +39,7 @@ rbm = RBMAlgorithm(
 vae = VAEAlgorithm(
     batchSize=128, latentDim=300, dropout=0.5, epochs=10, learningRate=1e-3
 )
-ae = AEAlgorithm(batchSize=32, latentDim=200, dropout=0, epochs=20, learningRate=1e-4)
+# ae = AEAlgorithm(batchSize=32, latentDim=200, dropout=0, epochs=20, learningRate=1e-4)
 
 
 folds = 2
