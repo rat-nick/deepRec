@@ -19,8 +19,10 @@ class DataLoader:
 
         ratingScale = trainset.rating_scale[1] - trainset.rating_scale[0] + 1
 
-        t = t = torch.zeros(trainset.n_users, trainset.n_items, ratingScale)
+        t = torch.zeros(trainset.n_users, trainset.n_items, ratingScale)
 
+        if torch.cuda.is_available():
+            t = t.to(device="cuda")
         for u, i, r in trainset.all_ratings():
             t[int(u)][int(i)][int(r) - 1] = 1.0
 
@@ -36,7 +38,8 @@ class DataLoader:
         ratingScale = trainset.rating_scale[1] - trainset.rating_scale[0] + 1
 
         t = torch.zeros(trainset.n_users, trainset.n_items)
-
+        if torch.cuda.is_available():
+            t = t.to(device="cuda")
         for u, i, r in trainset.all_ratings():
             t[int(u)][int(i)] = int(r) / ratingScale
 
@@ -45,6 +48,8 @@ class DataLoader:
     @classmethod
     def implicitRatingsToTensor(self, trainset: Trainset, cutoff=4) -> torch.Tensor:
         t = torch.zeros(trainset.n_users, trainset.n_items)
+        if torch.cuda.is_available():
+            t = t.to(device="cuda")
         for u, i, r in trainset.all_ratings():
             if r < cutoff:
                 continue
