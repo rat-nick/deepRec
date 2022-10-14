@@ -1,3 +1,4 @@
+from typing import List
 from surprise import Dataset, Trainset
 from surprise.dataset import DatasetAutoFolds
 import torch
@@ -56,6 +57,15 @@ class DataLoader:
             t[int(u)][int(i)] = 1.0
         return t
 
+    @classmethod
+    def getUserRatings(self, user, trainset: Trainset):
+        res = []
+        for u, i, r in trainset.all_ratings():
+            if user == u:
+                res += [(trainset.to_raw_iid(i), r)]
+
+        return res
+
 
 if __name__ == "__main__":
     dataset = Dataset.load_builtin("ml-100k")
@@ -63,3 +73,4 @@ if __name__ == "__main__":
     dl = DataLoader(dataset)
     print(DataLoader.normalizedRatingsToTensor(trainset).shape)
     print(DataLoader.ratingsToSparseTensor(trainset).shape)
+    print(DataLoader.getUserRatings(13, trainset))

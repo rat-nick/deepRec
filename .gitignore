@@ -29,7 +29,7 @@ Latest commit 8e67b94 on Feb 20
 __pycache__/
 *.py[cod]
 *$py.class
-
+playground.ipynb
 # C extensions
 *.so
 

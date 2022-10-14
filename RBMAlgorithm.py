@@ -1,13 +1,17 @@
-from surprise import AlgoBase, PredictionImpossible, Reader, Trainset
-from surprise.dataset import Dataset
-
+import torch
 from sklearn.model_selection import train_test_split
+from surprise import PredictionImpossible, Trainset
+from surprise.dataset import Dataset
+from surprise.model_selection import ShuffleSplit
+
+from Evaluator import Evaluator
 from RBM import RBM
+from RecommenderBase import RecommenderBase
 from utils.data import ratingsToTensor
 from utils.tensors import onehot_to_ratings, softmax_to_rating
 
 
-class RBMAlgorithm(AlgoBase):
+class RBMAlgorithm(RecommenderBase):
     def __init__(
         self,
         n_hidden: int = 100,
@@ -22,6 +26,8 @@ class RBMAlgorithm(AlgoBase):
         verbose=False,
         split_ratio: float = 0.9,
         use_softmax=True,
+        load_from_file=False,
+        fpath="",
     ):
 
         self.split_ratio = split_ratio
@@ -39,10 +45,10 @@ class RBMAlgorithm(AlgoBase):
             max_epoch=max_epoch,
             verbose=verbose,
         )
-        AlgoBase.__init__(self)
+        RecommenderBase.__init__(self)
 
     def fit(self, trainset: Trainset):
-        AlgoBase.fit(self, trainset)
+        RecommenderBase.fit(self, trainset)
         self.trainset = trainset
         self.ratings = ratingsToTensor(trainset)
 
@@ -68,14 +74,30 @@ class RBMAlgorithm(AlgoBase):
     def predict(self, uid, iid, r_ui=None, clip=True, verbose=False):
         return super().predict(uid, iid, r_ui, clip, verbose)
 
+    def recommendations(self, uid):
+        uid = int(uid)
+        x = self.ratings[int(uid)]
+        recs = []
+        for item in self.trainset.all_items():
+            recs += [(self.trainset.to_raw_iid(item), self.estimate(uid, item))]
+
+        recs.sort(key=lambda x: x[1], reverse=True)
+        return recs
+
+    def getRecommendations(self, ratings):
+        t = torch.zeros_like(self.trainset)
+        for movie, rating in ratings:
+            t[movie][rating - 1] = 1
+        rec = self.model.reconstruct(t)
+        rec = onehot_to_ratings(rec)
+        for movie, rating in ratings:
+            rec[movie] = 0
+        return rec
+
 
 if __name__ == "__main__":
-    Udata = Dataset.load_builtin("ml-1m")
-    fpath = "fullSet-5.txt"
-    # Udata = Dataset.load_from_file(fpath, reader=Reader(line_format="user item rating"))
-    Idata = Dataset.load_from_file(fpath, reader=Reader(line_format="item user rating"))
-    # items = data.build_full_trainset().n_items
-
+    Udata = Dataset.load_builtin("ml-100k")
+    # print(Udata.raw_ratings)
     Ualgo = RBMAlgorithm(
         verbose=True,
         max_epoch=200,
@@ -88,22 +110,12 @@ if __name__ == "__main__":
         momentum=0.5,
         early_stopping=True,
     )
-    Ualgo.fit(Idata.build_full_trainset())
+    cv = ShuffleSplit(n_splits=1, test_size=0.05)
+    for train, test in cv.split(Udata):
+        Ualgo.fit(train)
 
-    # Ialgo = RBMAlgorithm(
-    #     verbose=True,
-    #     max_epoch=40,
-    #     n_hidden=100,
-    #     learning_rate=0.001,
-    #     l1=0.001,
-    #     l2=0.001,
-    #     batch_size=5,
-    #     momentum=0.3,
-    # )
-    # Ialgo.fit(Idata.build_full_trainset())
-    print(Ualgo.model.rmse)
-    while True:
-        u, i = map(int, input().split())
-        Upred = Ualgo.predict(str(u), str(i))
-        # Ipred = Ialgo.predict(str(i), str(u))
-        print(Upred, sep="\n")
+        eval = Evaluator(Ualgo, test)
+
+        print(eval.evaluate(k=10))
+        print(eval.evaluate(k=20))
+        print(eval.evaluate(k=50))

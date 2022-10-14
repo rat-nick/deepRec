@@ -21,6 +21,7 @@ data = Dataset.load_builtin("ml-100k")
 
 bl = BaselineOnly()
 np = NormalPredictor()
+svd = SVD()
 rbm = RBMAlgorithm(
     early_stopping=True,
     patience=4,
@@ -43,6 +44,12 @@ vae = VAEAlgorithm(
 
 
 folds = 2
+cross_validate(
+    svd, data, measures=["RMSE", "MAE"], cv=folds, verbose=True, n_jobs=folds
+)
+cross_validate(
+    rbm, data, measures=["RMSE", "MAE"], cv=folds, verbose=True, n_jobs=folds
+)
 cross_validate(
     vae, data, measures=["RMSE", "MAE"], cv=folds, verbose=True, n_jobs=folds
 )
