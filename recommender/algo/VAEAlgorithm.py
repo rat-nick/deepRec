@@ -1,9 +1,9 @@
-from decimal import Subnormal
-from surprise import AlgoBase, PredictionImpossible, Trainset, Dataset
-import torch
 import numpy as np
-from DataLoader import DataLoader
+import torch
+from surprise import AlgoBase, Dataset, PredictionImpossible, Trainset
 from VAE import VAE
+
+from DataLoader import DataLoader
 
 
 class VAEAlgorithm(AlgoBase):

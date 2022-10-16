@@ -1,12 +1,13 @@
+from tkinter.tix import Tree
 import torch
+from RBM import RBM
+from RecommenderBase import RecommenderBase
 from sklearn.model_selection import train_test_split
 from surprise import PredictionImpossible, Trainset
 from surprise.dataset import Dataset
 from surprise.model_selection import ShuffleSplit
 
-from Evaluator import Evaluator
-from RBM import RBM
-from RecommenderBase import RecommenderBase
+# from Evaluator import Evaluator
 from utils.data import ratingsToTensor
 from utils.tensors import onehot_to_ratings, softmax_to_rating
 
@@ -92,6 +93,9 @@ class RBMAlgorithm(RecommenderBase):
         rec = onehot_to_ratings(rec)
         for movie, rating in ratings:
             rec[movie] = 0
+        rec = rec.detach().numpy()
+        rec = [(i, x) for i, x in enumerate(rec)]
+        rec.sort(key=lambda x: x[1], reverse=Tree)
         return rec
 
 

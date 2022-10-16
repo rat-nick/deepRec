@@ -1,8 +1,8 @@
-from typing import List
+from typing import List, Tuple
 
 from surprise.dataset import Trainset
 
-from RecommenderBase import RecommenderBase
+from .RecommenderBase import RecommenderBase
 
 
 class RecommenderEngine:
@@ -11,7 +11,7 @@ class RecommenderEngine:
         self.trainset = trainset
         self.algo.fit(trainset)
 
-    def getRecommendations(self, ratings: List[int, int]) -> List[int]:
+    def getRecommendations(self, ratings: List[Tuple[int, int]]) -> List[int]:
         # convert from rawID to innerID
         ratings = [(self.trainset.to_inner_iid(id), rating) for id, rating in ratings]
         recs = self.algo.getRecommendations(ratings)

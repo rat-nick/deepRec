@@ -1,8 +1,10 @@
-from typing import Tuple
-from utils.tensors import *
-import torch
 import math
+from typing import Tuple
+
 import matplotlib.pyplot as plt
+import torch
+
+from utils.tensors import *
 
 
 class RBM:

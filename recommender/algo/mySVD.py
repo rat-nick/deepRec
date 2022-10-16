@@ -1,25 +1,22 @@
-from typing import List
+from typing import List, Tuple
 
 import pandas as pd
-from surprise import KNNBasic
+from surprise import SVD
 from surprise.dataset import DatasetAutoFolds
 
-from RecommenderBase import RecommenderBase
+from ..RecommenderBase import RecommenderBase
 
 
-class myKNN(RecommenderBase):
+class mySVD(RecommenderBase):
     def __init__(self, dataset: DatasetAutoFolds):
-        self.algo = KNNBasic(k=9, min_k=5, verbose=True)
+        self.algo = SVD()
         self.dataset = dataset
-        self.df = pd.DataFrame(
-            self.dataset.__dict__["raw_ratings"],
-            columns=["uid", "iid", "rui"],
-        )
+        self.df = dataset.df
 
     def estimate(self, u, i):
         return self.algo.estimate(u, i)
 
-    def getRecommendations(self, ratings: List[(int, int)]) -> List[int]:
+    def getRecommendations(self, ratings: List[Tuple[int, int]]) -> List[int]:
         trainset = self.dataset.build_full_trainset()
         numberOfUsers = trainset.n_users
         newRatings = [(numberOfUsers, i, r) for i, r in ratings]
@@ -34,7 +31,7 @@ class myKNN(RecommenderBase):
 
         # generate candidates
         candidates = [
-            (i, self.algo.estimate(numberOfUsers, i))
+            (i, self.estimate(numberOfUsers, i))
             for i in trainset.all_items()
             if i not in ratedItems
         ]
