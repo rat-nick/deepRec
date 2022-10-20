@@ -65,6 +65,36 @@ class DataAccess:
         return
 
 
+class Batcher:
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        batch_size: int,
+        size: tuple,
+    ):
+        self.df = df
+        self.bs = batch_size
+        self.size = size
+
+    def next(self):
+        users = self.df["user"].unique()
+        t = torch.zeros(self.bs + self.size)
+        current = 0
+        for u in users:
+            userRatings = self.df[self.df["user"] == u]
+            t[
+                current,
+                userRatings["item"].to_numpy(),
+                userRatings["rating"].to_numpy() - 1,
+            ] = 1.0
+            current += 1
+            if current == self.bs:
+                yield t
+                current = 0
+        yield t
+        return
+
+
 if __name__ == "__main__":
     dataAccess = DataAccess()
     for b in dataAccess.batches(10):
