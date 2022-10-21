@@ -100,7 +100,11 @@ class Batcher:
     def next(self):
         users = self.df["user"].unique()
         shuffle(users)
+        if torch.cuda.is_available():
+            print("CUDA available!")
+            torch.cuda.set_device(torch.device("cuda"))
         t = torch.zeros((self.bs,) + self.size)
+
         current = 0
         for u in users:
             userRatings = self.df[self.df["user"] == u]
