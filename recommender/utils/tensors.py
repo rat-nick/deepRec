@@ -72,7 +72,7 @@ def reconstruction_mae(o, r):
     return mae(o, r).item()
 
 
-def ratings_softmax(v, num_ratings=5):
+def ratings_softmax(v, num_ratings=10):
     v = v.reshape(v.shape[0] // num_ratings, num_ratings)
     v = torch.softmax(v, dim=1)
     return v
