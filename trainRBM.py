@@ -5,6 +5,6 @@ dataset = MyDataset()
 dataset.trainTestValidationSplit()
 print("Succesfully read data!")
 
-rbm = RBMAlgorithm(verbose=True)
+rbm = RBMAlgorithm(verbose=True, device="cuda")
 
 rbm.fit(dataset)

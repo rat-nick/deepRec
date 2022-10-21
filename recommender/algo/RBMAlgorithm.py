@@ -24,6 +24,7 @@ class RBMAlgorithm(RecommenderBase):
         verbose=False,
         split_ratio: float = 0.9,
         use_softmax=True,
+        device="cpu",
         model_from_file=False,
         model_fpath="",
         data_access=MyDataset,
@@ -43,7 +44,7 @@ class RBMAlgorithm(RecommenderBase):
             patience=patience,
             max_epoch=max_epoch,
             verbose=verbose,
-            device="cuda",
+            device=device,
         )
         RecommenderBase.__init__(self)
 

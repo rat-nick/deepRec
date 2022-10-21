@@ -14,6 +14,10 @@ LINKS_FILE = "links.csv"
 
 class MyDataset:
     def __init__(self):
+        if torch.cuda.is_available():
+            print("CUDA available!")
+            torch.set_default_tensor_type(torch.cuda.FloatTensor)
+
         self.rawRatingsDF = pd.read_csv(f"{DATA_DIR}/{RATINGS_FILE}", sep=",", header=0)
         self.itemsDF = pd.read_csv(f"{DATA_DIR}/{ITEMS_FILE}", sep=",", header=0)
         linksDF = pd.read_csv(f"{DATA_DIR}/{LINKS_FILE}", sep=",", header=0)
@@ -100,9 +104,7 @@ class Batcher:
     def next(self):
         users = self.df["user"].unique()
         shuffle(users)
-        if torch.cuda.is_available():
-            print("CUDA available!")
-            torch.set_default_tensor_type(torch.cuda.FloatTensor)
+
         t = torch.zeros((self.bs,) + self.size)
 
         current = 0
