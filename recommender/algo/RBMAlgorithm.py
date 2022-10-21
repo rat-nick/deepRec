@@ -1,15 +1,12 @@
-from tkinter.tix import Tree
 import torch
-from RBM import RBM
-from RecommenderBase import RecommenderBase
-from sklearn.model_selection import train_test_split
-from surprise import PredictionImpossible, Trainset
+from ..model.RBM import RBM
+from ..RecommenderBase import RecommenderBase
+from surprise import PredictionImpossible
 from surprise.dataset import Dataset
 from surprise.model_selection import ShuffleSplit
 
-# from Evaluator import Evaluator
-from utils.data import ratingsToTensor
-from utils.tensors import onehot_to_ratings, softmax_to_rating
+from ..utils.tensors import onehot_to_ratings, softmax_to_rating
+from data.dataset import MyDataset
 
 
 class RBMAlgorithm(RecommenderBase):
@@ -27,12 +24,13 @@ class RBMAlgorithm(RecommenderBase):
         verbose=False,
         split_ratio: float = 0.9,
         use_softmax=True,
-        load_from_file=False,
-        fpath="",
+        model_from_file=False,
+        model_fpath="",
+        data_access=MyDataset,
     ):
-
         self.split_ratio = split_ratio
         self.use_softmax = use_softmax
+        self.data_access = data_access()
         self.model = RBM(
             n_visible=0,
             n_hidden=n_hidden,
@@ -48,19 +46,13 @@ class RBMAlgorithm(RecommenderBase):
         )
         RecommenderBase.__init__(self)
 
-    def fit(self, trainset: Trainset):
-        RecommenderBase.fit(self, trainset)
-        self.trainset = trainset
-        self.ratings = ratingsToTensor(trainset)
+    def fit(self, data: MyDataset):
+        # RecommenderBase.fit(self, trainset)
+        # self.trainset = trainset
+        # self.ratings = ratingsToTensor(trainset)
 
-        train, validation = train_test_split(
-            self.ratings,
-            train_size=self.split_ratio,
-            random_state=42,
-        )
-
-        self.model.n_visible = self.ratings.shape[1] * self.ratings.shape[2]
-        self.model.fit(train, validation)
+        self.model.n_visible = data.nItems * 10
+        self.model.fit(data)
 
     def estimate(self, u, i):
 
@@ -95,7 +87,7 @@ class RBMAlgorithm(RecommenderBase):
             rec[movie] = 0
         rec = rec.detach().numpy()
         rec = [(i, x) for i, x in enumerate(rec)]
-        rec.sort(key=lambda x: x[1], reverse=Tree)
+        rec.sort(key=lambda x: x[1], reverse=True)
         return rec
 
 
@@ -118,7 +110,7 @@ if __name__ == "__main__":
     for train, test in cv.split(Udata):
         Ualgo.fit(train)
 
-        eval = Evaluator(Ualgo, test)
+        # seval = Evaluator(Ualgo, test)
 
         print(eval.evaluate(k=10))
         print(eval.evaluate(k=20))

@@ -1,6 +1,7 @@
-from metrics import *
 from surprise import Trainset
+
 from DataLoader import DataLoader
+from metrics import *
 
 
 class Evaluator:

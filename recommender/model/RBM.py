@@ -1,10 +1,9 @@
 import math
 from typing import Tuple
 
-import matplotlib.pyplot as plt
 import torch
-
-from utils.tensors import *
+from ..utils.tensors import *
+from data.dataset import MyDataset
 
 
 class RBM:
@@ -292,7 +291,8 @@ class RBM:
 
         return ret
 
-    def fit(self, train, test, t=1, decay=lambda x: x):
+    def fit(self, data: MyDataset, t=1, decay=lambda x: x):
+        self.data = data
         self._metrics = {"rmse": [], "mae": []}
         self._best_epoch = 0
         self._current_patience = 0
@@ -309,13 +309,14 @@ class RBM:
         self.best_v = self.v
         self.best_h = self.h
 
-        p = torch.sum(train, dim=0) / train.shape[0]
-        p = p / (1 - p)
+        # p = torch.sum(train, dim=0) / train.shape[0]
+        # p = p / (1 - p)
 
-        p[torch.isinf(p)] = 1
-        p = torch.log(p)
-        p = torch.nan_to_num(p)
-        self.v = p.flatten()
+        # p[torch.isinf(p)] = 1
+        # p = torch.log(p)
+        # p = torch.nan_to_num(p)
+        # self.v = p.flatten()
+        self.v = torch.zeros(data.nItems * 10)
         self.w *= 0.01
         self.h *= torch.abs(self.h + 10) * -1
         if self.verbose:
@@ -325,25 +326,21 @@ class RBM:
             if self.verbose:
                 print(epoch, end="\t")
 
-            trainset = train[torch.randperm(train.shape[0])]
-
-            for user in range(0, len(trainset), self.batch_size):
-
-                minibatch = trainset[user : user + self.batch_size]
+            for minibatch in data.batches(data.trainData, self.batch_size):
                 self.apply_gradient(
                     minibatch=minibatch,
                     t=t,
                     decay=decay,
                 )
 
-            rmse, mae = self.__calculate_errors(test)
+            rmse, mae = self.__calculate_errors("validation")
             self._metrics["rmse"] += [rmse]
             self._metrics["mae"] += [mae]
 
             if self.verbose:
                 print(format(rmse, ".4f"), end="\t")
                 print(format(mae, ".4f"), end="\t")
-                rmse, mae = self.__calculate_errors(train)
+                rmse, mae = self.__calculate_errors("train")
 
                 print(format(rmse, ".4f"), end="\t")
                 print(format(mae, ".4f"), end="\t")
@@ -366,11 +363,15 @@ class RBM:
         self.v = torch.zeros(self.n_visible, device=self.device)
         self.h = torch.zeros(self.n_hidden, device=self.device)
 
-    def __calculate_errors(self, dataset):
+    def __calculate_errors(self, s):
         se = 0
         ae = 0
         n = 0
-        for v in dataset:
+        if s == "validation":
+            data = self.data.validationData
+        else:
+            data = self.data.trainData
+        for v in self.data.batches(data, 1):
             rec = self.reconstruct(v)
             n += len(v[v.sum(dim=1) > 0])
             se += squared_error(v, rec)

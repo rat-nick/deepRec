@@ -6,9 +6,11 @@ import pandas as pd
 
 
 class DataLoader:
-    def __init__(self, dataset: DatasetAutoFolds):
-        self.dataset = dataset
+    def __init__(self, dataset: Dataset:
+        self.dataset = datasetatasetAutoFolds)
         self.trainset = dataset.build_full_trainset()
+        self.ratings_df = dataset.df
+        print()
 
     @classmethod
     def ratingsToSparseTensor(self, trainset: Trainset) -> torch.Tensor:

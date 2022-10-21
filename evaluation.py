@@ -1,4 +1,4 @@
-from RBMAlgorithm import RBMAlgorithm
+from .recommender.algo.RBMAlgorithm import RBMAlgorithm
 from surprise import Reader, Dataset
 from surprise import BaselineOnly
 import pandas as pd

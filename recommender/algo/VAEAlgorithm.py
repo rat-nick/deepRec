@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from surprise import AlgoBase, Dataset, PredictionImpossible, Trainset
-from VAE import VAE
+from ..model.VAE import VAE
 
 from DataLoader import DataLoader
 
@@ -20,7 +20,6 @@ class VAEAlgorithm(AlgoBase):
         self.epochs = epochs
         self.batchSize = batchSize
         self.latentDim = latentDim
-        self.dropout = dropout
         self.learningRate = learningRate
         self.optimizer = optimizer
 
