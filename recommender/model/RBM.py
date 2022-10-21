@@ -319,19 +319,27 @@ class RBM:
         self.v = torch.zeros(data.nItems * 10)
         self.w *= 0.01
         self.h *= torch.abs(self.h + 10) * -1
+        loading = "-" * 20
         if self.verbose:
-            print("----------test------------|--------train----")
-            print("Epoch\tRMSE\tMAE\tRMSE\tMAE")
+
+            print(f"Epoch\t{loading}\tRMSE\tMAE")
+
+        numBatches = data.trainUsers / self.batch_size
+        _5pct = numBatches / 20
         for epoch in range(1, self.max_epoch + 1):
             if self.verbose:
-                print(epoch, end="\t")
-
+                print(epoch, end="\t", flush=True)
+            current = 0
             for minibatch in data.batches(data.trainData, self.batch_size):
                 self.apply_gradient(
                     minibatch=minibatch,
                     t=t,
                     decay=decay,
                 )
+                current += 1
+                if current >= _5pct:
+                    print("#", end="", flush=True)
+                    current = 0
 
             rmse, mae = self.__calculate_errors("validation")
             self._metrics["rmse"] += [rmse]
@@ -340,11 +348,6 @@ class RBM:
             if self.verbose:
                 print(format(rmse, ".4f"), end="\t")
                 print(format(mae, ".4f"), end="\t")
-                rmse, mae = self.__calculate_errors("train")
-
-                print(format(rmse, ".4f"), end="\t")
-                print(format(mae, ".4f"), end="\t")
-                print()
 
             if (
                 len(self._metrics["rmse"]) == 1
