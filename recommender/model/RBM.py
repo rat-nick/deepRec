@@ -324,7 +324,7 @@ class RBM:
 
             print(f"Epoch\t{loading}\tRMSE\tMAE")
 
-        numBatches = data.trainUsers / self.batch_size
+        numBatches = len(data.trainUsers) / self.batch_size
         _5pct = numBatches / 20
         for epoch in range(1, self.max_epoch + 1):
             if self.verbose:
