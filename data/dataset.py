@@ -102,7 +102,7 @@ class Batcher:
         shuffle(users)
         if torch.cuda.is_available():
             print("CUDA available!")
-            torch.cuda.set_device(torch.device("cuda"))
+            torch.set_default_tensor_type(torch.cuda.FloatTensor)
         t = torch.zeros((self.bs,) + self.size)
 
         current = 0
