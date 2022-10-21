@@ -43,6 +43,7 @@ class RBMAlgorithm(RecommenderBase):
             patience=patience,
             max_epoch=max_epoch,
             verbose=verbose,
+            device="cuda",
         )
         RecommenderBase.__init__(self)
 
