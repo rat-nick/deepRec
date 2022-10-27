@@ -1,9 +1,5 @@
-import imp
 from math import sqrt
 import torch
-from torch.nn import LogSoftmax
-import matplotlib.pyplot as plt
-import math
 
 mae = torch.nn.L1Loss()
 mse = torch.nn.MSELoss()
@@ -27,7 +23,7 @@ def sm2r(v):
 
 
 def onehot_to_ratings(v):
-    return torch.argmax(v, dim=1) + 1
+    return torch.argmax(v, dim=2) + 1
 
 
 def absolute_error(o, r):
@@ -43,8 +39,8 @@ def absolute_error(o, r):
 
 def squared_error(o, r):
     bkpr = r
-    r = r[o.sum(dim=1) > 0]
-    o = o[o.sum(dim=1) > 0]
+    r = r[o.sum(dim=2) > 0]
+    o = o[o.sum(dim=2) > 0]
     bkpo = o
     r = sm2r(r)  # .float()
     o = onehot_to_ratings(o).float()
@@ -53,8 +49,8 @@ def squared_error(o, r):
 
 
 def reconstruction_rmse(o, r):
-    r = r[o.sum(dim=1) > 0]
-    o = o[o.sum(dim=1) > 0]
+    r = r[o.sum(dim=2) > 0]
+    o = o[o.sum(dim=2) > 0]
 
     r = onehot_to_ratings(r).float()
     o = onehot_to_ratings(o).float()
@@ -63,8 +59,8 @@ def reconstruction_rmse(o, r):
 
 
 def reconstruction_mae(o, r):
-    r = r[o.sum(dim=1) > 0]
-    o = o[o.sum(dim=1) > 0]
+    r = r[o.sum(dim=2) > 0]
+    o = o[o.sum(dim=2) > 0]
 
     r = onehot_to_ratings(r).float()
     o = onehot_to_ratings(o).float()
@@ -73,8 +69,8 @@ def reconstruction_mae(o, r):
 
 
 def ratings_softmax(v, num_ratings=10):
-    v = v.reshape(v.shape[0] // num_ratings, num_ratings)
-    v = torch.softmax(v, dim=1)
+    # v = v.reshape(v.shape[0], v.shape[1] // num_ratings, num_ratings)
+    v = torch.softmax(v, dim=2)
     return v
 
 

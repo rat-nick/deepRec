@@ -15,7 +15,8 @@ class RBM:
     def __init__(
         self,
         n_visible: int,
-        n_hidden: int,
+        ratings: int = 1,
+        n_hidden: int = 10,
         device: str = "cpu",
         learning_rate: float = 0.001,
         l1=0.0,
@@ -63,6 +64,7 @@ class RBM:
 
         # hyperparameters
         self.n_visible = n_visible
+        self.ratings = ratings
         self.n_hidden = n_hidden
         self.alpha = learning_rate
         self.learning_rate = learning_rate
@@ -78,6 +80,8 @@ class RBM:
         self.device = device
 
         self.verbose = verbose
+
+        self.setup_weights_and_biases()
 
     def __save_checkpoint(self, epoch):
         """
@@ -120,10 +124,13 @@ class RBM:
             the probability tensor and the sampled probability tensor of the hidden layer `h`
         """
         # flatten the input tensor
-        if len(v.shape) > 1:
-            v = v.flatten()
+        # if len(v.shape) > 1:
+        #    v = v.flatten()
 
-        a = torch.matmul(v, self.w)
+        # XXX: get rid of flattening
+        # v = v.flatten(start_dim=1)
+
+        a = torch.mm(v.flatten(-2), self.w.flatten(end_dim=1))
 
         a = self.h + a
 
@@ -151,10 +158,10 @@ class RBM:
             _description_
         """
 
-        a = torch.matmul(h, self.w.t())
+        a = torch.matmul(self.w, h.t())
 
-        pv = self.v + a
-        pv = activation(pv.flatten())
+        pv = self.v.unsqueeze(2) + a
+        pv = activation(pv.permute(2, 0, 1))
         return pv
 
     def apply_gradient(
@@ -164,27 +171,27 @@ class RBM:
         Perform contrastive divergence algorithm to optimize the weights that minimize the energy
         This maximizes the log-likelihood of the model
         """
+
+        se, ae, n = self.batch_error(minibatch)
+        rmse = math.sqrt(se / n)
+        mae = ae / n
+
         vb_delta = torch.zeros(self.n_visible, device=self.device)
         hb_delta = torch.zeros(self.n_hidden, device=self.device)
         w_delta = torch.zeros(self.n_visible, self.n_hidden, device=self.device)
         activations = torch.zeros(self.n_hidden, device=self.device)
-        # perform multiple forward passes for each case
-        # and save the deltas
-        for case in minibatch:
-            v0 = case
+        v0 = minibatch
 
-            v0, ph0, vt, pht = self.gibbs_sample(v0, t)
-            activations += ph0
-            # caluclate the deltas
-            hb_delta += ph0 - pht
-            vb_delta += v0 - vt
+        v0, ph0, vt, pht = self.gibbs_sample(v0, t)
+        activations = ph0.sum(dim=0) / len(minibatch)
 
-        w_delta = torch.outer(vb_delta, hb_delta)
+        hb_delta = (ph0 - pht).sum(dim=0) / len(minibatch)
+        vb_delta = (v0 - vt).sum(dim=0) / len(minibatch)
+
+        w_delta = torch.matmul(vb_delta.unsqueeze(2), hb_delta.unsqueeze(0))
 
         # divide learning rate by the size of the minibatch
-        hb_delta /= len(minibatch)
-        vb_delta /= len(minibatch)
-        w_delta /= len(minibatch)
+        # w_delta /= len(minibatch)
 
         # apply learning rate decay
         self.alpha = decay(self.learning_rate)
@@ -215,6 +222,8 @@ class RBM:
         self.h -= reg_h
         self.w -= torch.ones_like(self.w) * reg_h
 
+        return rmse, mae
+
     def gibbs_sample(
         self, input: torch.Tensor, t: int = 1
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -239,13 +248,13 @@ class RBM:
         # do Gibbs sampling for t steps
         for i in range(t):
             vk = self.backward_pass(hk)
-            vk[input.sum(dim=1) == 0] = input[input.sum(dim=1) == 0]
+            vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
             phk, hk = self.forward_pass(vk)
 
         # vk = softmax_to_onehot(vk)
 
-        input = input.flatten()
-        vk = vk.flatten()
+        # input = input.flatten()
+        # vk = vk.flatten()
         return input, ph0, vk, phk
 
     def reconstruct(self, v: torch.Tensor) -> torch.Tensor:
@@ -316,38 +325,50 @@ class RBM:
         # p = torch.log(p)
         # p = torch.nan_to_num(p)
         # self.v = p.flatten()
-        self.v = torch.zeros(data.nItems * 10)
+
+        # self.v = torch.zeros(data.nItems * 10)
         self.w *= 0.01
         self.h *= torch.abs(self.h + 10) * -1
         loading = "-" * 20
         if self.verbose:
+            print(f"#####\t{loading}\tTRAIN\t\t\t\tVALIDATION")
+            print(f"Epoch\t{loading}\tRMSE\t\tMAE\t\tRMSE\t\tMAE")
 
-            print(f"Epoch\t{loading}\tRMSE\tMAE")
-
+        # nCases = math.ceil(self.data.trainData / self.batch_size)
         numBatches = len(data.trainUsers) / self.batch_size
         _5pct = numBatches / 20
+
         for epoch in range(1, self.max_epoch + 1):
             if self.verbose:
                 print(epoch, end="\t", flush=True)
             current = 0
+            rmse = mae = 0
+
             for minibatch in data.batches(data.trainData, self.batch_size):
-                self.apply_gradient(
+                _rmse, _mae = self.apply_gradient(
                     minibatch=minibatch,
                     t=t,
                     decay=decay,
                 )
+                rmse += _rmse
+                mae += _mae
+
                 current += 1
                 if current >= _5pct:
                     print("#", end="", flush=True)
                     current = 0
+            print("\t", end="", flush=True)
+
+            print(format(rmse / numBatches, ".6f"), end="\t")
+            print(format(mae / numBatches, ".6f"), end="\t")
 
             rmse, mae = self.__calculate_errors("validation")
             self._metrics["rmse"] += [rmse]
             self._metrics["mae"] += [mae]
 
             if self.verbose:
-                print(format(rmse, ".4f"), end="\t")
-                print(format(mae, ".4f"), end="\t")
+                print(format(rmse, ".6f"), end="\t")
+                print(format(mae, ".6f"), end="\t")
 
             if (
                 len(self._metrics["rmse"]) == 1
@@ -358,29 +379,53 @@ class RBM:
             if self.early_stopping and self.__early_stopping():
                 self.__load_checkpoint()
                 return
+            print()
 
         self.__load_checkpoint()
 
     def setup_weights_and_biases(self):
-        self.w = torch.zeros(self.n_visible, self.n_hidden, device=self.device)
-        self.v = torch.zeros(self.n_visible, device=self.device)
+        self.w = torch.zeros(
+            self.n_visible, self.ratings, self.n_hidden, device=self.device
+        )
+        self.v = torch.zeros(self.n_visible, self.ratings, device=self.device)
         self.h = torch.zeros(self.n_hidden, device=self.device)
+
+    # FIXME: fix error calculation
 
     def __calculate_errors(self, s):
         se = 0
         ae = 0
         n = 0
+
         if s == "validation":
             data = self.data.validationData
         else:
             data = self.data.trainData
-        for v in self.data.batches(data, 1):
-            rec = self.reconstruct(v)
-            n += len(v[v.sum(dim=1) > 0])
-            se += squared_error(v, rec)
-            ae += absolute_error(v, rec)
 
+        for v in self.data.batches(data, self.batch_size):
+            _ae, _se, _n = self.batch_error(v)
+            ae += _ae
+            se += _se
+            n += _n
         return math.sqrt(se / n), ae / n
+
+    def batch_error(self, v):
+        se = 0
+        ae = 0
+        n = 0
+
+        rec = self.reconstruct(v)
+        n += len(v[v.sum(dim=2) > 0])
+        vRating = onehot_to_ratings(v)
+        recRating = onehot_to_ratings(rec)
+
+        # set the same value for missing values so they don't affect error calculation
+        recRating[v.sum(dim=2) == 0] = vRating[v.sum(dim=2) == 0]
+
+        se += ((recRating - vRating) * (recRating - vRating)).sum().item()
+        ae += torch.abs(recRating - vRating).sum().item()
+
+        return se, ae, n
 
     @property
     def rmse(self):

@@ -27,11 +27,9 @@ class RBMAlgorithm(RecommenderBase):
         device="cpu",
         model_from_file=False,
         model_fpath="",
-        data_access=MyDataset,
     ):
         self.split_ratio = split_ratio
         self.use_softmax = use_softmax
-        self.data_access = data_access()
         self.model = RBM(
             n_visible=0,
             n_hidden=n_hidden,
@@ -52,8 +50,6 @@ class RBMAlgorithm(RecommenderBase):
         # RecommenderBase.fit(self, trainset)
         # self.trainset = trainset
         # self.ratings = ratingsToTensor(trainset)
-
-        self.model.n_visible = data.nItems * 10
         self.model.fit(data)
 
     def estimate(self, u, i):
