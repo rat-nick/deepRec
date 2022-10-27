@@ -176,9 +176,9 @@ class RBM:
         rmse = math.sqrt(se / n)
         mae = ae / n
 
-        vb_delta = torch.zeros(self.n_visible, device=self.device)
-        hb_delta = torch.zeros(self.n_hidden, device=self.device)
-        w_delta = torch.zeros(self.n_visible, self.n_hidden, device=self.device)
+        # vb_delta = torch.zeros(self.n_visible, device=self.device)
+        # hb_delta = torch.zeros(self.n_hidden, device=self.device)
+        # w_delta = torch.zeros(self.n_visible, self.n_hidden, device=self.device)
         activations = torch.zeros(self.n_hidden, device=self.device)
         v0 = minibatch
 
@@ -202,7 +202,7 @@ class RBM:
         self.w += w_delta * self.alpha
 
         # apply momentum if applicable
-        if self.momentum > 0.0:
+        if self.momentum > 0.0 and hasattr(self, "prev_w_delta"):
             self.v += self.prev_vb_delta * self.momentum
             self.h += self.prev_hb_delta * self.momentum
             self.w += self.prev_w_delta * self.momentum
@@ -287,6 +287,12 @@ class RBM:
             self._current_patience += 1
 
         return self._current_patience >= self.patience
+
+    def load_model_from_file(self, fpath):
+        params = torch.load("rbm.pt")
+        self.w = params["w"]
+        self.v = params["v"]
+        self.h = params["h"]
 
     @property
     def hyperparameters(self):
@@ -378,10 +384,15 @@ class RBM:
 
             if self.early_stopping and self.__early_stopping():
                 self.__load_checkpoint()
+                self.save_model_to_file("rbm.pt")
                 return
             print()
 
         self.__load_checkpoint()
+
+    def save_model_to_file(self, fpath):
+        params = {"w": self.w, "v": self.v, "h": self.h}
+        torch.save(params, fpath)
 
     def setup_weights_and_biases(self):
         self.w = torch.zeros(
