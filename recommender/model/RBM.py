@@ -289,7 +289,7 @@ class RBM:
         return self._current_patience >= self.patience
 
     def load_model_from_file(self, fpath):
-        params = torch.load("rbm.pt")
+        params = torch.load(fpath)
         self.w = params["w"]
         self.v = params["v"]
         self.h = params["h"]
@@ -368,7 +368,7 @@ class RBM:
             print(format(rmse / numBatches, ".6f"), end="\t")
             print(format(mae / numBatches, ".6f"), end="\t")
 
-            rmse, mae = self.__calculate_errors("validation")
+            rmse, mae = self.calculate_errors("validation")
             self._metrics["rmse"] += [rmse]
             self._metrics["mae"] += [mae]
 
@@ -403,18 +403,20 @@ class RBM:
 
     # FIXME: fix error calculation
 
-    def __calculate_errors(self, s):
+    def calculate_errors(self, s):
         se = 0
         ae = 0
         n = 0
 
         if s == "validation":
             data = self.data.validationData
+        elif s == "test":
+            data = self.data.testData
         else:
             data = self.data.trainData
 
         for v in self.data.batches(data, self.batch_size):
-            _ae, _se, _n = self.batch_error(v)
+            _se, _ae, _n = self.batch_error(v)
             ae += _ae
             se += _se
             n += _n
