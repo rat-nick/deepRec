@@ -1,23 +1,27 @@
-from surprise import Trainset
-
-from DataLoader import DataLoader
+from recommender.RecommenderEngine import RecommenderEngine
+from data.dataset import MyDataset
 from metrics import *
+from data.EvaluationData import EvaluationData
 
 
 class Evaluator:
-    def __init__(self, rs, data: Trainset):
+    def __init__(self, rs: RecommenderEngine, dataset: MyDataset):
         self.rs = rs
-        self.data = data
+        self.dataset = dataset
+        self.evalData = EvaluationData(dataset)
         self.metrics = RecommenderMetrics()
 
-    def evaluate(self, k=10):
+    def evaluate(self, k=50):
         recall = 0
         precision = 0
-        users = self.data.all_users()
+        users = self.dataset.testUsers
         n = len(users)
         for u in users:
-            recs = self.rs.recommendations(u)
-            ratings = DataLoader.getUserRatings(u, self.data)
+            # u = self.dataset.raw2InnerUser(u)
+            recs = self.rs.recommendationsForUser(u)
+            ratings = self.dataset.getInnerUserRatings(u)
+            ratings = list(ratings.itertuples(index=False, name=None))
+            ratings = [(x, y) for _, x, y in ratings]
             recall += self.metrics.RecallAtK(k, recs, ratings)
             precision += self.metrics.PrecissionAtK(k, recs, ratings)
 

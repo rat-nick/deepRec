@@ -173,21 +173,21 @@ class RecommenderMetrics:
         return total / n
 
     def PrecissionAtK(self, k, recommendations, userRatings, relevancyThreshold=3.5):
-        relevant = [i for i in userRatings if i > relevancyThreshold]
+        relevant = [i for i, r in userRatings if r > relevancyThreshold]
         total = 0
-        recommendations = self.GetTopN(recommendations, k)
+        recommendations = recommendations[:k]
         for p in recommendations:
-            if p in relevant:
+            if p[0] in relevant:
                 total += 1
 
         return total / k
 
     def RecallAtK(self, k, recommendations, userRatings, relevancyThreshold=3.5):
-        relevant = [i for i in userRatings if i > relevancyThreshold]
+        relevant = [i for i, r in userRatings if r > relevancyThreshold]
         total = 0
-        recommendations = self.GetTopN(recommendations, k)
+        recommendations = recommendations[:k]
         for p in recommendations:
-            if p in relevant:
+            if p[0] in relevant:
                 total += 1
 
-        return total / relevant
+        return total / len(relevant)

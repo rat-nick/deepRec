@@ -11,8 +11,8 @@ def softmax_to_onehot(v):
 
 
 def softmax_to_rating(v):
-    ratings = torch.arange(1, v.shape[0] + 1).float()
-    return torch.dot(v, ratings).item()
+    ratings = torch.arange(1, v.shape[2] + 1).float()
+    return torch.matmul(v[0], ratings)
 
 
 def sm2r(v):

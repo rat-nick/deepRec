@@ -1,11 +1,9 @@
-from os import link
 from random import shuffle
 from pathlib import Path
 import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 from surprise import Dataset, Reader
-from surprise.dataset import Trainset
 import time
 
 DATA_DIR = Path(__file__).parent / "ml-20m"
@@ -78,10 +76,18 @@ class MyDataset:
         )
 
         self.trainset = self.ratingsDS.build_full_trainset()
+
+        self.inner2RawUser = self.trainset.to_raw_uid
+        self.inner2RawItem = self.trainset.to_raw_iid
+        self.raw2InnerUser = self.trainset.to_inner_uid
+        self.raw2InnerItem = self.trainset.to_inner_iid
+
         self.nItems = self.trainset.n_items
         self.nUsers = self.trainset.n_users
+
         self.allUsers = [u for u in self.trainset.all_users()]
         self.allItems = [i for i in self.trainset.all_items()]
+
         self.convertRatings2InnerIDs()
 
     def trainTestValidationSplit(self):
@@ -122,6 +128,12 @@ class MyDataset:
     def batches(self, data: pd.DataFrame, batch_size: int):
         batcher = Batcher(data, batch_size, (self.nItems, 10))
         return batcher.next()
+
+    def getRawUserRatings(self, uid):
+        return self.rawRatingsDF.loc[self.rawRatingsDF["user"] == uid]
+
+    def getInnerUserRatings(self, uid):
+        return self.innerRatingsDF.loc[self.innerRatingsDF["user"] == uid]
 
 
 class Batcher:

@@ -12,51 +12,32 @@ from data.dataset import MyDataset
 class RBMAlgorithm(RecommenderBase):
     def __init__(
         self,
-        n_hidden: int = 100,
-        learning_rate: float = 0.001,
-        l1=0.0,
-        l2=0.0,
-        momentum=0.0,
-        batch_size=1,
-        early_stopping=False,
-        patience=5,
-        max_epoch=20,
-        verbose=False,
-        split_ratio: float = 0.9,
-        use_softmax=True,
-        device="cpu",
-        model_from_file=False,
-        model_fpath="",
+        dataset: MyDataset,
+        model: RBM,
+        model_path="",
     ):
-        self.split_ratio = split_ratio
-        self.use_softmax = use_softmax
-        self.model = RBM(
-            n_visible=0,
-            n_hidden=n_hidden,
-            learning_rate=learning_rate,
-            l1=l1,
-            l2=l2,
-            momentum=momentum,
-            batch_size=batch_size,
-            early_stopping=early_stopping,
-            patience=patience,
-            max_epoch=max_epoch,
-            verbose=verbose,
-            device=device,
-        )
+        self.dataset = dataset
+
+        if model_path != "":
+            try:
+                self.model = RBM()
+                self.model.load_model_from_file(model_path)
+            except:
+                print("could not load model from file!")
+        else:
+            self.model = model
+
         RecommenderBase.__init__(self)
 
     def fit(self, data: MyDataset):
-        # RecommenderBase.fit(self, trainset)
-        # self.trainset = trainset
-        # self.ratings = ratingsToTensor(trainset)
         self.model.fit(data)
 
     def estimate(self, u, i):
 
         if not (self.trainset.knows_user(u) and self.trainset.knows_item(i)):
             raise PredictionImpossible("User and/or item is unknown.")
-        rec = self.model.reconstruct(self.ratings[u])
+        ratings = self.dataset.getInnerUserRatings(u)
+        rec = self.model.reconstruct(ratings)
         if self.use_softmax:
             return softmax_to_rating(rec[i])
         else:
@@ -65,17 +46,23 @@ class RBMAlgorithm(RecommenderBase):
     def predict(self, uid, iid, r_ui=None, clip=True, verbose=False):
         return super().predict(uid, iid, r_ui, clip, verbose)
 
-    def recommendations(self, uid):
-        uid = int(uid)
-        x = self.ratings[int(uid)]
-        recs = []
-        for item in self.trainset.all_items():
-            recs += [(self.trainset.to_raw_iid(item), self.estimate(uid, item))]
+    def recommendationsForUser(self, user):
+        # TODO: implement properly
+        user = int(user)
 
-        recs.sort(key=lambda x: x[1], reverse=True)
-        return recs
+        ratings = self.dataset.getInnerUserRatings(user)
+        t = torch.zeros((self.dataset.nItems, 10))
+        t[ratings["item"].to_numpy(), ratings["rating"].to_numpy() - 1] = 1.0
+        y = self.model.reconstruct(t.unsqueeze(0))
+        y = softmax_to_rating(y)
+        y = y.detach().numpy()
+        y = list(enumerate(y))
 
-    def getRecommendations(self, ratings):
+        y.sort(key=lambda x: x[1], reverse=True)
+        return y
+
+    def getRecommendationsFromRatings(self, ratings):
+        # TODO: implement properly
         t = torch.zeros_like(self.trainset)
         for movie, rating in ratings:
             t[movie][rating - 1] = 1
@@ -90,26 +77,4 @@ class RBMAlgorithm(RecommenderBase):
 
 
 if __name__ == "__main__":
-    Udata = Dataset.load_builtin("ml-100k")
-    # print(Udata.raw_ratings)
-    Ualgo = RBMAlgorithm(
-        verbose=True,
-        max_epoch=200,
-        patience=10,
-        n_hidden=100,
-        learning_rate=0.001,
-        l1=0.001,
-        l2=0.001,
-        batch_size=10,
-        momentum=0.5,
-        early_stopping=True,
-    )
-    cv = ShuffleSplit(n_splits=1, test_size=0.05)
-    for train, test in cv.split(Udata):
-        Ualgo.fit(train)
-
-        # seval = Evaluator(Ualgo, test)
-
-        print(eval.evaluate(k=10))
-        print(eval.evaluate(k=20))
-        print(eval.evaluate(k=50))
+    pass
