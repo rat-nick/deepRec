@@ -4,6 +4,7 @@ from typing import Tuple
 import torch
 from ..utils.tensors import *
 from data.dataset import MyDataset
+import time
 
 
 class RBM:
@@ -333,8 +334,8 @@ class RBM:
         # self.v = p.flatten()
 
         # self.v = torch.zeros(data.nItems * 10)
-        self.w *= 0.01
-        self.h *= torch.abs(self.h + 10) * -1
+        # self.w *= 0.01
+        # self.h *= torch.abs(self.h + 10) * -1
         loading = "-" * 20
         if self.verbose:
             print(f"#####\t{loading}\tTRAIN\t\t\t\tVALIDATION")
@@ -381,25 +382,26 @@ class RBM:
                 or self._metrics["rmse"][-1] < self._metrics["rmse"][self._best_epoch]
             ):
                 self.__save_checkpoint(epoch)
-
+                self.save_model_to_file(f"rbm{time.time()}.pt")
             if self.early_stopping and self.__early_stopping():
                 self.__load_checkpoint()
-                self.save_model_to_file("rbm.pt")
+                self.save_model_to_file(f"rbm{time.time()}.pt")
                 return
             print()
 
         self.__load_checkpoint()
+        self.save_model_to_file(f"rbm{time.time()}.pt")
 
     def save_model_to_file(self, fpath):
         params = {"w": self.w, "v": self.v, "h": self.h}
         torch.save(params, fpath)
 
     def setup_weights_and_biases(self):
-        self.w = torch.zeros(
-            self.n_visible, self.ratings, self.n_hidden, device=self.device
-        )
+        self.w = (
+            torch.randn(self.n_visible, self.ratings, self.n_hidden, device=self.device)
+        ) * 1e-2
         self.v = torch.zeros(self.n_visible, self.ratings, device=self.device)
-        self.h = torch.zeros(self.n_hidden, device=self.device)
+        self.h = torch.ones(self.n_hidden, device=self.device) * -5
 
     # FIXME: fix error calculation
 
