@@ -29,6 +29,7 @@ class RBM:
         delta=0.005,
         max_epoch=20,
         verbose=False,
+        sparsity=0.01,
     ) -> None:
         """
         Instantiates a Restricted Bolzmann Machine
@@ -77,7 +78,7 @@ class RBM:
         self.early_stopping = early_stopping
         self.patience = patience
         self.delta = delta
-
+        self.sparsity = sparsity
         self.device = device
 
         self.verbose = verbose
@@ -180,6 +181,7 @@ class RBM:
         # vb_delta = torch.zeros(self.n_visible, device=self.device)
         # hb_delta = torch.zeros(self.n_hidden, device=self.device)
         # w_delta = torch.zeros(self.n_visible, self.n_hidden, device=self.device)
+
         activations = torch.zeros(self.n_hidden, device=self.device)
         v0 = minibatch
 
@@ -219,9 +221,15 @@ class RBM:
 
         # apply regularization
         self.w -= reg_w * len(minibatch)
-        reg_h = (activations / len(minibatch)) * self.l1
-        self.h -= reg_h
-        self.w -= torch.ones_like(self.w) * reg_h
+        q_new = (activations / len(minibatch)) * (1 - self.l1) + self.l1 * self.q_prev
+        sparsity_penalty = (
+            -self.sparsity * torch.log(q_new)
+            - (1 - self.sparsity)
+            - torch.log(1 - q_new)
+        )
+        self.h += sparsity_penalty
+        self.w += torch.ones_like(self.w) * sparsity_penalty
+        self.q_prev = q_new
 
         return rmse, mae
 
@@ -249,9 +257,10 @@ class RBM:
         # do Gibbs sampling for t steps
         for i in range(t):
             vk = self.backward_pass(hk)
-            vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
+            # vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
             phk, hk = self.forward_pass(vk)
 
+        vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
         # vk = softmax_to_onehot(vk)
 
         # input = input.flatten()
@@ -313,13 +322,16 @@ class RBM:
         self._best_epoch = 0
         self._current_patience = 0
 
-        self.setup_weights_and_biases()
+        # self.setup_weights_and_biases()
 
         self.prev_w_delta = torch.zeros(
-            self.n_visible, self.n_hidden, device=self.device
+            self.n_visible, self.ratings, self.n_hidden, device=self.device
         )
-        self.prev_vb_delta = torch.zeros(self.n_visible, device=self.device)
+        self.prev_vb_delta = torch.zeros(
+            self.n_visible, self.ratings, device=self.device
+        )
         self.prev_hb_delta = torch.zeros(self.n_hidden, device=self.device)
+        self.q_prev = torch.zeros(self.n_hidden, device=self.device)
 
         self.best_w = self.w
         self.best_v = self.v
