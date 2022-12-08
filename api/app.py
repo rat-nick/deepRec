@@ -6,6 +6,7 @@ from surprise.dataset import DatasetAutoFolds
 from ..recommender.algo.RBMAlgorithm import RBMAlgorithm
 from ..recommender.RecommenderEngine import RecommenderEngine
 from .DAL import *
+import pprint
 
 app = Flask(__name__)
 cors = CORS(app)
@@ -44,10 +45,11 @@ def searchItems(term):
 def recommend():
     # print(request)
     req = request.get_json()
-    print(req)
+    pprint.pprint(req)
     req = list(map(lambda x: (x["id"], x["rating"]), req))
     # print(req)
     recs = receng.getRecommendations(req)
+    pprint.pp(recs)
     recsIDs = [ids for ids, _ in recs]
     # print(recsIDs)
     return dal.getMoviesWithIDs(recsIDs).to_json(orient="records")

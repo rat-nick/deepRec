@@ -71,7 +71,7 @@ class RBMAlgorithm(RecommenderBase):
 
         rec = self.model.reconstruct(t)
 
-        rec = onehot_to_ratings(rec)
+        rec = onehot_to_ranking(rec)
 
         print(rec.shape)
         # print(rec)
