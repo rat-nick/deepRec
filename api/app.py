@@ -3,7 +3,6 @@ from flask_cors import CORS, cross_origin
 from surprise import Dataset, Reader
 from surprise.dataset import DatasetAutoFolds
 
-from ..recommender.algo.mySVD import mySVD
 from ..recommender.algo.RBMAlgorithm import RBMAlgorithm
 from ..recommender.RecommenderEngine import RecommenderEngine
 from .DAL import *
@@ -17,33 +16,38 @@ dal = DAL()
 print("Initialized in memory storage...")
 dataset = DatasetAutoFolds(df=dal.ratings, reader=Reader(rating_scale=(1, 10)))
 
-print("Fitting the algorithm...")
-algo = RBMAlgorithm(dataset, verbose=True)
-print("Fitting completed!")
+print("Loading RBM model...")
+rbmAlgo = RBMAlgorithm(model_path="models/rbm.pt", model=None, dataset=dataset)
+print("Loaded RBM model!")
+
 print("Initializing recommender engine...")
-receng = RecommenderEngine(algo, dataset.build_full_trainset())
+receng = RecommenderEngine(rbmAlgo, dataset.build_full_trainset())
 print("Recommender engine initialized...")
 
 
 @app.route("/allItems")
 @cross_origin()
 def getAllItems():
-    return dal.movies.head(100).to_json(orient="records")
+    return dal.movies.sample(100).to_json(orient="records")
     # return "All Items"
 
 
 @app.route("/search/<term>")
 @cross_origin()
 def searchItems(term):
+    print(term)
     return dal.searchItems(term).to_json(orient="records")
 
 
 @app.route("/recommend", methods=["POST"])
 @cross_origin()
 def recommend():
+    # print(request)
     req = request.get_json()
     print(req)
-    req = map(req, lambda x: (x["id"], x["rating"]))
-    res = receng.getRecommendations(req)
-    print(res)
-    return None
+    req = list(map(lambda x: (x["id"], x["rating"]), req))
+    # print(req)
+    recs = receng.getRecommendations(req)
+    recsIDs = [ids for ids, _ in recs]
+    # print(recsIDs)
+    return dal.getMoviesWithIDs(recsIDs).to_json(orient="records")

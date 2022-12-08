@@ -148,8 +148,6 @@ class Batcher:
         self.size = size
 
     def next(self):
-        # TODO: optimize batching process
-
         users = self.df["user"].unique()
         shuffle(users)
 

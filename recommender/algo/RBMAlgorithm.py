@@ -5,8 +5,8 @@ from surprise import PredictionImpossible
 from surprise.dataset import Dataset
 from surprise.model_selection import ShuffleSplit
 
-from ..utils.tensors import onehot_to_ratings, softmax_to_rating
-from data.dataset import MyDataset
+from ..utils.tensors import *
+from ...data.dataset import MyDataset
 
 
 class RBMAlgorithm(RecommenderBase):
@@ -18,12 +18,13 @@ class RBMAlgorithm(RecommenderBase):
     ):
         self.dataset = dataset
 
+        # self.model = RBM()
+        # self.model.load_model_from_file(model_path)
         if model_path != "":
-            try:
-                self.model = RBM()
-                self.model.load_model_from_file(model_path)
-            except:
-                print("could not load model from file!")
+            self.model = RBM(0)
+            self.model.load_model_from_file(model_path)
+
+            # print("could not load model from file!")
         else:
             self.model = model
 
@@ -47,7 +48,7 @@ class RBMAlgorithm(RecommenderBase):
         return super().predict(uid, iid, r_ui, clip, verbose)
 
     def recommendationsForUser(self, user):
-        # TODO: implement properly
+        # FIXME: implement properly
         user = int(user)
 
         ratings = self.dataset.getInnerUserRatings(user)
@@ -61,18 +62,32 @@ class RBMAlgorithm(RecommenderBase):
         y.sort(key=lambda x: x[1], reverse=True)
         return y
 
-    def getRecommendationsFromRatings(self, ratings):
-        # TODO: implement properly
-        t = torch.zeros_like(self.trainset)
+    def getRecommendations(self, ratings):
+
+        t = torch.zeros((1, self.model.n_visible, 10))
+
         for movie, rating in ratings:
-            t[movie][rating - 1] = 1
+            t[0][movie][rating - 1] = 1
+
         rec = self.model.reconstruct(t)
+
         rec = onehot_to_ratings(rec)
-        for movie, rating in ratings:
+
+        print(rec.shape)
+        # print(rec)
+        # print(ratings)
+        rec = rec[0]
+        for movie, _ in ratings:
             rec[movie] = 0
-        rec = rec.detach().numpy()
-        rec = [(i, x) for i, x in enumerate(rec)]
-        rec.sort(key=lambda x: x[1], reverse=True)
+
+        # print(rec)
+        rec = list(rec.detach().numpy())
+        rec = [(i, x.item()) for i, x in enumerate(rec)]
+        # print(rec)
+        # rec.sort(key=lambda x: x[1], reverse=True)
+        # print("BBBB")
+        # print("RECOMMENDING:")
+        # print(rec[:50])
         return rec
 
 

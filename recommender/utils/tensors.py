@@ -16,14 +16,15 @@ def softmax_to_rating(v):
 
 
 def sm2r(v):
-    ratings = torch.arange(start=1, end=6).float()
+    ratings = torch.arange(1, v.shape[2] + 1).float()
     ratings = ratings.expand_as(v)
     ret = torch.mul(v, ratings).sum(dim=1)
     return ret
 
 
 def onehot_to_ratings(v):
-    return torch.argmax(v, dim=2) + 1
+    print(torch.max(v, dim=2))
+    return torch.argmax(v, dim=2) + 1 + torch.max(v, dim=2).values
 
 
 def absolute_error(o, r):

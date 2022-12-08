@@ -33,10 +33,22 @@ class DAL:
 
     def searchItems(self, term):
         if term == "":
-            return self.movies.head(100)
+            return self.movies.tail(100)
         return self.movies[self.movies["title"].str.contains(term, case=False, na=True)]
+
+    def getMoviesWithIDs(self, IDs: list):
+        print("looking for IDs")
+        # print(IDs)
+        input = pd.DataFrame({"input": IDs})
+        out = input.merge(self.movies, left_on="input", right_on="movieId").loc[
+            :, ["movieId", "title", "genres", "imdbId", "tmdbId"]
+        ]
+        # res = self.movies[self.movies["movieId"].isin(IDs)]
+        # print(out)
+        return out
 
 
 if __name__ == "__main__":
     dal = DAL()
     print(dal.movies.head())
+    print(dal.getMoviesWithIDs([3, 11, 25]))

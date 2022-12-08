@@ -1,12 +1,16 @@
+from typing import List, Tuple
 import numpy as np
 import torch
 from surprise import AlgoBase, Dataset, PredictionImpossible, Trainset
+
+from data.dataset import MyDataset
 from ..model.VAE import VAE
 
 from DataLoader import DataLoader
+from ..RecommenderBase import RecommenderBase
 
 
-class VAEAlgorithm(AlgoBase):
+class VAEAlgorithm(RecommenderBase):
     def __init__(
         self,
         epochs=50,
@@ -23,22 +27,20 @@ class VAEAlgorithm(AlgoBase):
         self.learningRate = learningRate
         self.optimizer = optimizer
 
-    def fit(self, trainset: Trainset):
-        AlgoBase.fit(self, trainset)
+    def fit(self, data: MyDataset):
+        # AlgoBase.fit(self, trainset)
 
-        self.trainset = trainset
-        self.train = DataLoader.normalizedRatingsToTensor(trainset)
-        self.ratings = trainset.all_ratings()
-        self.model = VAE(self.train.shape[1], self.latentDim, self.dropout)
+        self.dataset = data
+        self.model = VAE(self.dataset.nItems, self.latentDim, self.dropout)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learningRate)
 
         for epoch in range(1, self.epochs + 1):
-            self.train = self.train[torch.randperm(self.train.shape[0])]
             losses = 0
             print(f"Epoch{epoch} :", end="")
-            for i in range(0, self.train.shape[0], self.batchSize):
-                batch = self.train[i : i + self.batchSize]
-                loss = self.trainIter(self.optimizer, batch, epoch)
+            for minibatch in self.dataset.batches(
+                self.dataset.trainData, self.batchSize
+            ):
+                loss = self.trainIter(self.optimizer, minibatch, epoch)
 
             losses += loss.item()
             print(losses / self.train.shape[0])
@@ -52,6 +54,9 @@ class VAEAlgorithm(AlgoBase):
             self.predictions[u] = rec.detach().numpy() * 5
 
     def trainIter(self, optimizer, batch, epoch):
+
+        # TODO: implement annealing
+
         rec, _, mu, logvar = self.model(batch)
         loss = elbo(rec, batch, mu, logvar)
 
@@ -67,6 +72,19 @@ class VAEAlgorithm(AlgoBase):
             raise PredictionImpossible("User and/or item is unknown.")
         return self.predictions[u][i]
 
+    def getRecommendations(self, ratings: List[Tuple[int, int]]) -> List[int]:
+        # TODO: convert ratings list to tensor
+        t = torch.zeros(self.dataset.nItems)
+        for id, rating in ratings:
+            t[id] = [1 if rating > 7 else 0]
+        # TODO: feed input tensor to model and get output
+        out, _, _, _ = self.model.forward(t)
+        # TODO: convert output tensor to list and sort
+        out = list(enumerate(out))
+        out.sort(key=lambda x: x[1], reverse=True)
+        print(out)
+        return out
+
 
 def elbo(x_hat, x, mu, logvar, anneal=1.0):
     bce = torch.nn.CrossEntropyLoss()(x_hat, x)
@@ -78,5 +96,5 @@ def elbo(x_hat, x, mu, logvar, anneal=1.0):
 
 if __name__ == "__main__":
     vae = VAEAlgorithm(10, 128, dropout=0.2, latentDim=100, learningRate=0.05)
-    trainset = Dataset.load_builtin("ml-100k").build_full_trainset()
-    vae.fit(trainset)
+    dataset = MyDataset(data_dir="ml-10m")
+    vae.fit(dataset)
