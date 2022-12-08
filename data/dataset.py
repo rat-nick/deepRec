@@ -175,10 +175,10 @@ class Batcher:
 
 if __name__ == "__main__":
     dataAccess = MyDataset(
-        data_dir="ml-1m",
-        ratings_path="ratings.dat",
+        data_dir="ml-20m",
+        ratings_path="ratings.csv",
         ratings_sep="::",
-        items_path="movies.dat",
+        items_path="movies.csv",
         items_sep="::",
     )
     dataAccess.trainTestValidationSplit()

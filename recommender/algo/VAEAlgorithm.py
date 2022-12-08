@@ -1,13 +1,13 @@
 from typing import List, Tuple
 import numpy as np
 import torch
-from surprise import AlgoBase, Dataset, PredictionImpossible, Trainset
+from surprise import PredictionImpossible
 
-from data.dataset import MyDataset
-from ..model.VAE import VAE
+from ..model import VAE
 
 from DataLoader import DataLoader
 from ..RecommenderBase import RecommenderBase
+from data.dataset import MyDataset
 
 
 class VAEAlgorithm(RecommenderBase):
@@ -96,5 +96,11 @@ def elbo(x_hat, x, mu, logvar, anneal=1.0):
 
 if __name__ == "__main__":
     vae = VAEAlgorithm(10, 128, dropout=0.2, latentDim=100, learningRate=0.05)
-    dataset = MyDataset(data_dir="ml-10m")
+    dataset = MyDataset(
+        data_dir="ml-10m",
+        items_path="movies.dat",
+        ratings_path="ratings.dat",
+        ratings_sep="::",
+        items_sep="::",
+    )
     vae.fit(dataset)

@@ -23,7 +23,7 @@ def sm2r(v):
 
 
 def onehot_to_ratings(v):
-    print(torch.max(v, dim=2))
+    # print(torch.max(v, dim=2))
     return torch.argmax(v, dim=2) + 1 + torch.max(v, dim=2).values
 
 
