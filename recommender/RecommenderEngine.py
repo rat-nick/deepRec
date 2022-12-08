@@ -3,6 +3,7 @@ from typing import List, Tuple
 from surprise.dataset import Trainset
 
 from .RecommenderBase import RecommenderBase
+import pprint
 
 
 class RecommenderEngine:
@@ -15,11 +16,10 @@ class RecommenderEngine:
         # convert from rawID to innerID
         ratings = [(self.trainset.to_inner_iid(id), rating) for id, rating in ratings]
         recs = self.algo.getRecommendations(ratings)
-        print(recs[:n])
+        # print(recs[:n])
         recs.sort(reverse=True, key=lambda x: x[1])
         recs = recs[:n]
         # convert from innerID to rawID
         res = [(self.trainset.to_raw_iid(id), rating) for id, rating in recs]
 
-        print(res)
         return res

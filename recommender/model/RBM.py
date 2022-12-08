@@ -4,7 +4,7 @@ from typing import Tuple
 import torch
 
 from ..utils.tensors import *
-from data.dataset import MyDataset
+from ...data.dataset import MyDataset
 import time
 
 
