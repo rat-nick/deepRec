@@ -9,11 +9,17 @@ class RecommenderEngine:
     def __init__(self, algo: RecommenderBase, trainset: Trainset):
         self.algo = algo
         self.trainset = trainset
-        self.algo.fit(trainset)
+        # self.algo.fit(trainset)
 
-    def getRecommendations(self, ratings: List[Tuple[int, int]]) -> List[int]:
+    def getRecommendations(self, ratings: List[Tuple[int, int]], n=50) -> List[int]:
         # convert from rawID to innerID
         ratings = [(self.trainset.to_inner_iid(id), rating) for id, rating in ratings]
         recs = self.algo.getRecommendations(ratings)
+        print(recs[:n])
+        recs.sort(reverse=True, key=lambda x: x[1])
+        recs = recs[:n]
         # convert from innerID to rawID
-        return [self.trainset.to_raw_iid(id) for id in recs]
+        res = [(self.trainset.to_raw_iid(id), rating) for id, rating in recs]
+
+        print(res)
+        return res

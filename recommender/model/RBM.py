@@ -2,8 +2,9 @@ import math
 from typing import Tuple
 
 import torch
+
 from ..utils.tensors import *
-from data.dataset import MyDataset
+from ...data.dataset import MyDataset
 
 
 class RBM:
@@ -123,12 +124,6 @@ class RBM:
         Tuple[torch.Tensor, torch.Tensor]
             the probability tensor and the sampled probability tensor of the hidden layer `h`
         """
-        # flatten the input tensor
-        # if len(v.shape) > 1:
-        #    v = v.flatten()
-
-        # XXX: get rid of flattening
-        # v = v.flatten(start_dim=1)
 
         a = torch.mm(v.flatten(-2), self.w.flatten(end_dim=1))
 
@@ -289,10 +284,11 @@ class RBM:
         return self._current_patience >= self.patience
 
     def load_model_from_file(self, fpath):
-        params = torch.load(fpath)
+        params = torch.load(fpath, map_location=torch.device("cpu"))
         self.w = params["w"]
         self.v = params["v"]
         self.h = params["h"]
+        self.n_visible = self.v.shape[0]
 
     @property
     def hyperparameters(self):
@@ -400,8 +396,6 @@ class RBM:
         )
         self.v = torch.zeros(self.n_visible, self.ratings, device=self.device)
         self.h = torch.zeros(self.n_hidden, device=self.device)
-
-    # FIXME: fix error calculation
 
     def calculate_errors(self, s):
         se = 0
