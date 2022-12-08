@@ -199,5 +199,7 @@ Training
 Blog
 About
 
+# datasets
+data/ml-*
 # model files
 *.pt
