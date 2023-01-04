@@ -4,7 +4,7 @@ from typing import Tuple
 import torch
 
 from ..utils.tensors import *
-from ...data.dataset import MyDataset
+from data.dataset import MyDataset
 import time
 
 
@@ -85,6 +85,7 @@ class RBM:
         self.verbose = verbose
 
         self.setup_weights_and_biases()
+        self.init_params()
 
     def __save_checkpoint(self, epoch):
         """
@@ -169,27 +170,16 @@ class RBM:
         This maximizes the log-likelihood of the model
         """
 
-        se, ae, n = self.batch_error(minibatch)
-        rmse = math.sqrt(se / n)
-        mae = ae / n
-
-        # vb_delta = torch.zeros(self.n_visible, device=self.device)
-        # hb_delta = torch.zeros(self.n_hidden, device=self.device)
-        # w_delta = torch.zeros(self.n_visible, self.n_hidden, device=self.device)
-
         activations = torch.zeros(self.n_hidden, device=self.device)
         v0 = minibatch
 
         v0, ph0, vt, pht = self.gibbs_sample(v0, t)
         activations = ph0.sum(dim=0) / len(minibatch)
-
+        # print(activations)
         hb_delta = (ph0 - pht).sum(dim=0) / len(minibatch)
         vb_delta = (v0 - vt).sum(dim=0) / len(minibatch)
 
         w_delta = torch.matmul(vb_delta.unsqueeze(2), hb_delta.unsqueeze(0))
-
-        # divide learning rate by the size of the minibatch
-        # w_delta /= len(minibatch)
 
         # apply learning rate decay
         self.alpha = decay(self.learning_rate)
@@ -215,16 +205,23 @@ class RBM:
         # reg_h = hb_delta * self.l1
 
         # apply regularization
-        self.w -= reg_w * len(minibatch)
-        q_new = (activations / len(minibatch)) * (1 - self.l1) + self.l1 * self.q_prev
-        sparsity_penalty = (
-            -self.sparsity * torch.log(q_new)
-            - (1 - self.sparsity)
-            - torch.log(1 - q_new)
-        )
-        self.h += sparsity_penalty
-        self.w += torch.ones_like(self.w) * sparsity_penalty
-        self.q_prev = q_new
+        self.w -= reg_w  # * len(minibatch)
+        if self.l1 > 0:
+            q_new = (activations / len(minibatch)) * (
+                1 - self.l1
+            ) + self.l1 * self.q_prev
+            sparsity_penalty = (
+                -self.sparsity * torch.log(q_new)
+                - (1 - self.sparsity)
+                - torch.log(1 - q_new)
+            )
+            self.h -= sparsity_penalty
+            self.w += torch.ones_like(self.w) * sparsity_penalty
+            self.q_prev = q_new
+
+        se, ae, n = self.batch_error(minibatch)
+        rmse = math.sqrt(se / n)
+        mae = ae / n
 
         return rmse, mae
 
@@ -250,12 +247,12 @@ class RBM:
         hk = phk = h0
 
         # do Gibbs sampling for t steps
-        for i in range(t):
+        for _ in range(t):
             vk = self.backward_pass(hk)
             # vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
             phk, hk = self.forward_pass(vk)
 
-        vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
+        # vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
         # vk = softmax_to_onehot(vk)
 
         # input = input.flatten()
@@ -293,12 +290,13 @@ class RBM:
 
         return self._current_patience >= self.patience
 
-    def load_model_from_file(self, fpath):
-        params = torch.load(fpath, map_location=torch.device("cpu"))
+    def load_model_from_file(self, fpath, device="cpu"):
+        params = torch.load(fpath, map_location=torch.device(device))
         self.w = params["w"]
         self.v = params["v"]
         self.h = params["h"]
         self.n_visible = self.v.shape[0]
+        self.n_hidden = self.h.shape[0]
 
     @property
     def hyperparameters(self):
@@ -314,24 +312,7 @@ class RBM:
 
     def fit(self, data: MyDataset, t=1, decay=lambda x: x):
         self.data = data
-        self._metrics = {"rmse": [], "mae": []}
-        self._best_epoch = 0
-        self._current_patience = 0
-
-        # self.setup_weights_and_biases()
-
-        self.prev_w_delta = torch.zeros(
-            self.n_visible, self.ratings, self.n_hidden, device=self.device
-        )
-        self.prev_vb_delta = torch.zeros(
-            self.n_visible, self.ratings, device=self.device
-        )
-        self.prev_hb_delta = torch.zeros(self.n_hidden, device=self.device)
-        self.q_prev = torch.zeros(self.n_hidden, device=self.device)
-
-        self.best_w = self.w
-        self.best_v = self.v
-        self.best_h = self.h
+        self.init_params()
 
         # p = torch.sum(train, dim=0) / train.shape[0]
         # p = p / (1 - p)
@@ -400,6 +381,25 @@ class RBM:
         self.__load_checkpoint()
         self.save_model_to_file(f"rbm{time.time()}.pt")
 
+    def init_params(self):
+        self._metrics = {"rmse": [], "mae": []}
+        self._best_epoch = 0
+        self._current_patience = 0
+
+        # self.setup_weights_and_biases()
+
+        self.prev_w_delta = torch.zeros(
+            self.n_visible, self.ratings, self.n_hidden, device=self.device
+        )
+        self.prev_vb_delta = torch.zeros(
+            self.n_visible, self.ratings, device=self.device
+        )
+        self.prev_hb_delta = torch.zeros(self.n_hidden, device=self.device)
+
+        self.best_w = self.w
+        self.best_v = self.v
+        self.best_h = self.h
+
     def save_model_to_file(self, fpath):
         params = {"w": self.w, "v": self.v, "h": self.h}
         torch.save(params, fpath)
@@ -409,7 +409,8 @@ class RBM:
             torch.randn(self.n_visible, self.ratings, self.n_hidden, device=self.device)
         ) * 1e-2
         self.v = torch.zeros(self.n_visible, self.ratings, device=self.device)
-        self.h = torch.ones(self.n_hidden, device=self.device) * -5
+        self.h = torch.zeros(self.n_hidden, device=self.device) * -2
+        self.q_prev = torch.zeros(self.n_hidden, device=self.device)
 
     def calculate_errors(self, s):
         se = 0

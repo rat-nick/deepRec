@@ -35,13 +35,14 @@ class MyDataset:
             engine="python",
             encoding="latin-1",
         )
-        self.itemsDF = pd.read_csv(
-            f"{data_dir}/{items_path}",
-            sep=items_sep,
-            header=0,
-            engine="python",
-            encoding="latin-1",
-        )
+        if items_path != "":
+            self.itemsDF = pd.read_csv(
+                f"{data_dir}/{items_path}",
+                sep=items_sep,
+                header=0,
+                engine="python",
+                encoding="latin-1",
+            )
 
         if links_path != "":
             linksDF = pd.read_csv(
