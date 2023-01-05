@@ -6,6 +6,7 @@ import torch
 from ..utils.tensors import *
 from data.dataset import MyDataset
 import time
+from .RBMParams import *
 
 
 class RBM:
@@ -65,44 +66,52 @@ class RBM:
             should the algorithm log additional data, by default False
         """
 
-        # hyperparameters
-        self.n_visible = n_visible
-        self.ratings = ratings
-        self.n_hidden = n_hidden
-        self.alpha = learning_rate
-        self.learning_rate = learning_rate
-        self.momentum = momentum
-        self.batch_size = batch_size
-        self.l1 = l1
-        self.l2 = l2
-        self.max_epoch = max_epoch
-        self.early_stopping = early_stopping
-        self.patience = patience
-        self.delta = delta
-        self.sparsity = sparsity
         self.device = device
-
         self.verbose = verbose
 
-        self.setup_weights_and_biases()
+        self.metrics = RBMMetrics()
+        self.params = RBMParams()
+
+        self.hyperParams = RBMHyperParams(
+            batch_size=batch_size,
+            early_stopping=early_stopping,
+            hidden_shape=(n_hidden,),
+            visible_shape=(
+                n_visible,
+                ratings,
+            ),
+            l1=l1,
+            l2=l2,
+            lr=learning_rate,
+            max_epochs=max_epoch,
+            momentum=momentum,
+            patience=patience,
+        )
+
         self.init_params()
+
+        self.trainingParams = RBMTrainingParams(
+            current_patience=0,
+            prev_wd=torch.zeros_like(self.params.w),
+            prev_hd=torch.zeros_like(self.params.h),
+            prev_vd=torch.zeros_like(self.params.v),
+            epoch=0,
+        )
+
+        self.bestParams = RBMParams(w=self.params.w, v=self.params.v, h=self.params.h)
+        self.init_training_params()
 
     def __save_checkpoint(self, epoch):
         """
         Saves current parameters as best
         """
-        self.best_w = self.w
-        self.best_v = self.v
-        self.best_h = self.h
-        self._best_epoch = epoch - 1
+        self.bestParams = self.params
 
     def __load_checkpoint(self):
         """
         Loads best parameters as current
         """
-        self.w = self.best_w
-        self.v = self.best_v
-        self.h = self.best_h
+        self.params = self.bestParams
 
     def forward_pass(
         self,
@@ -128,12 +137,12 @@ class RBM:
             the probability tensor and the sampled probability tensor of the hidden layer `h`
         """
 
-        a = torch.mm(v.flatten(-2), self.w.flatten(end_dim=1))
+        w = self.params.w
+        h = self.params.h
 
-        a = self.h + a
-
+        a = torch.mm(v.flatten(-2), w.flatten(end_dim=1))
+        a = h + a
         ph = activation(a)
-
         return ph, sampler(ph)
 
     def backward_pass(
@@ -155,10 +164,12 @@ class RBM:
         torch.Tensor
             _description_
         """
+        w = self.params.w
+        v = self.params.v
 
-        a = torch.matmul(self.w, h.t())
+        a = torch.matmul(w, h.t())
 
-        pv = self.v.unsqueeze(2) + a
+        pv = v.unsqueeze(2) + a
         pv = activation(pv.permute(2, 0, 1))
         return pv
 
@@ -170,54 +181,54 @@ class RBM:
         This maximizes the log-likelihood of the model
         """
 
-        activations = torch.zeros(self.n_hidden, device=self.device)
+        activations = torch.zeros_like(self.params.h, device=self.device)
         v0 = minibatch
 
         v0, ph0, vt, pht = self.gibbs_sample(v0, t)
         activations = ph0.sum(dim=0) / len(minibatch)
-        # print(activations)
+
         hb_delta = (ph0 - pht).sum(dim=0) / len(minibatch)
         vb_delta = (v0 - vt).sum(dim=0) / len(minibatch)
 
         w_delta = torch.matmul(vb_delta.unsqueeze(2), hb_delta.unsqueeze(0))
 
         # apply learning rate decay
-        self.alpha = decay(self.learning_rate)
+        self.alpha = decay(self.hyperParams.lr)
 
         # update the parameters of the model
-        self.v += vb_delta * self.alpha
-        self.h += hb_delta * self.alpha
-        self.w += w_delta * self.alpha
+        self.params.v += vb_delta * self.alpha
+        self.params.h += hb_delta * self.alpha
+        self.params.w += w_delta * self.alpha
 
         # apply momentum if applicable
-        if self.momentum > 0.0 and hasattr(self, "prev_w_delta"):
-            self.v += self.prev_vb_delta * self.momentum
-            self.h += self.prev_hb_delta * self.momentum
-            self.w += self.prev_w_delta * self.momentum
+        # if self.momentum > 0.0 and hasattr(self, "prev_w_delta"):
+        #     self.params.v += self.trainingParams.prev_vd * self.hyperParams.momentum
+        #     self.params.h += self.trainingParams.prev_hd * self.hyperParams.momentum
+        #     self.params.w += self.trainingParams.prev_wd * self.hyperParams.momentum
 
         # remember the deltas for next training step when using momentum
-        self.prev_w_delta = w_delta
-        self.prev_hb_delta = hb_delta
-        self.prev_vb_delta = vb_delta
+        # self.prev_w_delta = w_delta
+        # self.prev_hb_delta = hb_delta
+        # self.prev_vb_delta = vb_delta
 
-        # calculate the regularization terms
-        reg_w = self.w * self.l2
-        # reg_h = hb_delta * self.l1
+        # # calculate the regularization terms
+        # reg_w = self.w * self.l2
+        # # reg_h = hb_delta * self.l1
 
-        # apply regularization
-        self.w -= reg_w  # * len(minibatch)
-        if self.l1 > 0:
-            q_new = (activations / len(minibatch)) * (
-                1 - self.l1
-            ) + self.l1 * self.q_prev
-            sparsity_penalty = (
-                -self.sparsity * torch.log(q_new)
-                - (1 - self.sparsity)
-                - torch.log(1 - q_new)
-            )
-            self.h -= sparsity_penalty
-            self.w += torch.ones_like(self.w) * sparsity_penalty
-            self.q_prev = q_new
+        # # apply regularization
+        # self.w -= reg_w  # * len(minibatch)
+        # if self.l1 > 0:
+        #     q_new = (activations / len(minibatch)) * (
+        #         1 - self.l1
+        #     ) + self.l1 * self.q_prev
+        #     sparsity_penalty = (
+        #         -self.sparsity * torch.log(q_new)
+        #         - (1 - self.sparsity)
+        #         - torch.log(1 - q_new)
+        #     )
+        #     self.h -= sparsity_penalty
+        #     self.w += torch.ones_like(self.w) * sparsity_penalty
+        #     self.q_prev = q_new
 
         se, ae, n = self.batch_error(minibatch)
         rmse = math.sqrt(se / n)
@@ -252,7 +263,7 @@ class RBM:
             # vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
             phk, hk = self.forward_pass(vk)
 
-        # vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
+        vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
         # vk = softmax_to_onehot(vk)
 
         # input = input.flatten()
@@ -279,68 +290,46 @@ class RBM:
         bool
 
         """
-        if len(self._metrics["rmse"]) < self.patience:
+        if len(self.metrics.validRMSE) < self.hyperParams.patience:
             return False
 
-        if self._metrics["rmse"][-1] <= self._metrics["rmse"][self._best_epoch]:
-            self._current_patience = 0
+        if self.metrics.validRMSE[-1] <= self.metrics.bestRMSE["value"]:
+            self.trainingParams.current_patience = 0
             return False
         else:
-            self._current_patience += 1
+            self.trainingParams.current_patience += 1
 
-        return self._current_patience >= self.patience
+        return self.trainingParams.current_patience >= self.hyperParams.patience
 
     def load_model_from_file(self, fpath, device="cpu"):
-        params = torch.load(fpath, map_location=torch.device(device))
-        self.w = params["w"]
-        self.v = params["v"]
-        self.h = params["h"]
-        self.n_visible = self.v.shape[0]
-        self.n_hidden = self.h.shape[0]
-
-    @property
-    def hyperparameters(self):
-        ret = {}
-        ret["n_visible"] = self.n_visible
-        ret["n_hidden"] = self.n_hidden
-        ret["learning_rate"] = self.learning_rate
-        ret["momentum"] = self.momentum
-        ret["l1"] = self.l1
-        ret["l2"] = self.l2
-
-        return ret
+        model_state = torch.load(fpath, map_location=torch.device(device))
+        self.params = model_state["params"]
+        self.trainingParams = model_state["trainingParams"]
+        self.metrics = model_state["metrics"]
+        self.hyperParams = model_state["hyperParams"]
 
     def fit(self, data: MyDataset, t=1, decay=lambda x: x):
         self.data = data
-        self.init_params()
-
-        # p = torch.sum(train, dim=0) / train.shape[0]
-        # p = p / (1 - p)
-
-        # p[torch.isinf(p)] = 1
-        # p = torch.log(p)
-        # p = torch.nan_to_num(p)
-        # self.v = p.flatten()
-
-        # self.v = torch.zeros(data.nItems * 10)
-        # self.w *= 0.01
-        # self.h *= torch.abs(self.h + 10) * -1
+        self.__load_checkpoint()
+        self.init_training_params()
+        self.trainingParams.epoch = len(self.metrics.trainMAE)
         loading = "-" * 20
         if self.verbose:
             print(f"#####\t{loading}\tTRAIN\t\t\t\tVALIDATION")
             print(f"Epoch\t{loading}\tRMSE\t\tMAE\t\tRMSE\t\tMAE")
 
-        # nCases = math.ceil(self.data.trainData / self.batch_size)
-        numBatches = len(data.trainUsers) / self.batch_size
+        numBatches = len(data.trainUsers) / self.hyperParams.batch_size
         _5pct = numBatches / 20
 
-        for epoch in range(1, self.max_epoch + 1):
+        for epoch in range(self.trainingParams.epoch, self.hyperParams.max_epochs + 1):
+
             if self.verbose:
                 print(epoch, end="\t", flush=True)
+
             current = 0
             rmse = mae = 0
 
-            for minibatch in data.batches(data.trainData, self.batch_size):
+            for minibatch in data.batches(data.trainData, self.hyperParams.batch_size):
                 _rmse, _mae = self.apply_gradient(
                     minibatch=minibatch,
                     t=t,
@@ -348,69 +337,74 @@ class RBM:
                 )
                 rmse += _rmse
                 mae += _mae
+                if self.verbose:
+                    current += 1
+                    if current >= _5pct:
+                        print("#", end="", flush=True)
+                        current = 0
 
-                current += 1
-                if current >= _5pct:
-                    print("#", end="", flush=True)
-                    current = 0
-            print("\t", end="", flush=True)
+            if self.verbose:
+                print("\t", end="", flush=True)
+                print(format(rmse / numBatches, ".6f"), end="\t")
+                print(format(mae / numBatches, ".6f"), end="\t")
 
-            print(format(rmse / numBatches, ".6f"), end="\t")
-            print(format(mae / numBatches, ".6f"), end="\t")
+            self.metrics.trainRMSE += [rmse / numBatches]
+            self.metrics.trainMAE += [mae / numBatches]
 
             rmse, mae = self.calculate_errors("validation")
-            self._metrics["rmse"] += [rmse]
-            self._metrics["mae"] += [mae]
+            self.metrics.validRMSE += [rmse]
+            self.metrics.validMAE += [mae]
 
             if self.verbose:
                 print(format(rmse, ".6f"), end="\t")
                 print(format(mae, ".6f"), end="\t")
+                print()
 
             if (
-                len(self._metrics["rmse"]) == 1
-                or self._metrics["rmse"][-1] < self._metrics["rmse"][self._best_epoch]
+                len(self.metrics.validRMSE) == 1
+                or self.metrics.validRMSE[-1] < self.metrics.bestRMSE["value"]
             ):
                 self.__save_checkpoint(epoch)
                 self.save_model_to_file(f"rbm{time.time()}.pt")
-            if self.early_stopping and self.__early_stopping():
+
+            if self.hyperParams.early_stopping and self.__early_stopping():
                 self.__load_checkpoint()
                 self.save_model_to_file(f"rbm{time.time()}.pt")
                 return
-            print()
 
         self.__load_checkpoint()
         self.save_model_to_file(f"rbm{time.time()}.pt")
 
-    def init_params(self):
-        self._metrics = {"rmse": [], "mae": []}
-        self._best_epoch = 0
-        self._current_patience = 0
+    def init_training_params(self):
 
-        # self.setup_weights_and_biases()
+        self.trainingParams.current_patience = 0
 
-        self.prev_w_delta = torch.zeros(
-            self.n_visible, self.ratings, self.n_hidden, device=self.device
+        self.trainingParams.prev_wd = torch.zeros_like(
+            self.params.w, device=self.device
         )
-        self.prev_vb_delta = torch.zeros(
-            self.n_visible, self.ratings, device=self.device
+        self.trainingParams.prev_vd = torch.zeros_like(
+            self.params.v, device=self.device
         )
-        self.prev_hb_delta = torch.zeros(self.n_hidden, device=self.device)
-
-        self.best_w = self.w
-        self.best_v = self.v
-        self.best_h = self.h
+        self.trainingParams.prev_hd = torch.zeros_like(
+            self.params.h, device=self.device
+        )
 
     def save_model_to_file(self, fpath):
-        params = {"w": self.w, "v": self.v, "h": self.h}
-        torch.save(params, fpath)
+        model_state = {
+            "params": self.bestParams,  # better to always save the best parameters
+            "trainingParams": self.trainingParams,
+            "metrics": self.metrics,
+            "hyperParams": self.hyperParams,
+        }
+        torch.save(model_state, fpath)
 
-    def setup_weights_and_biases(self):
-        self.w = (
-            torch.randn(self.n_visible, self.ratings, self.n_hidden, device=self.device)
-        ) * 1e-2
-        self.v = torch.zeros(self.n_visible, self.ratings, device=self.device)
-        self.h = torch.zeros(self.n_hidden, device=self.device) * -2
-        self.q_prev = torch.zeros(self.n_hidden, device=self.device)
+    def init_params(self):
+        hp = self.hyperParams
+        w_shape = hp.visible_shape + (hp.hidden_shape)
+
+        self.params.w = torch.randn(w_shape, device=self.device) * 1e-2
+        self.params.v = torch.zeros(hp.visible_shape, device=self.device)
+        self.params.h = torch.zeros(hp.hidden_shape, device=self.device)
 
     def calculate_errors(self, s):
         se = 0
@@ -424,7 +418,7 @@ class RBM:
         else:
             data = self.data.trainData
 
-        for v in self.data.batches(data, self.batch_size):
+        for v in self.data.batches(data, self.hyperParams.batch_size):
             _se, _ae, _n = self.batch_error(v)
             ae += _ae
             se += _se
@@ -448,10 +442,6 @@ class RBM:
         ae += torch.abs(recRating - vRating).sum().item()
 
         return se, ae, n
-
-    @property
-    def rmse(self):
-        return self._metrics["rmse"][self._best_epoch]
 
 
 if __name__ == "__main__":
