@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from random import shuffle
 from pathlib import Path
 import pandas as pd
@@ -12,39 +13,65 @@ ITEMS_FILE = "movies.csv"
 LINKS_FILE = "links.csv"
 
 
+@dataclass
+class DataLoadingParams:
+    ratings_path: str
+    ratings_sep: str
+    items_path: str
+    items_sep: str
+
+
+DATASETS_DICT = {
+    "ml-100k": DataLoadingParams(
+        "u.data",
+        "\t",
+        "u.items",
+        "::",
+    ),
+    "ml-1m": DataLoadingParams(
+        "ratings.dat",
+        "::",
+        "movies.dat",
+        "::",
+    ),
+}
+
+
 class MyDataset:
     def __init__(
         self,
-        data_dir="ml-20m",
-        ratings_path="ratings.csv",
-        ratings_sep=",",
-        items_path="movies.csv",
-        items_sep=",",
-        links_path="",
-        links_sep=",",
+        dataset="ml-100k",
     ):
-        data_dir = Path(__file__).parent / data_dir
+
+        loading_params = DATASETS_DICT[dataset]
+        data_dir = Path(__file__).parent / dataset
         if torch.cuda.is_available():
             print("CUDA available! Setting default tensor type to cuda.FloatTensor")
             torch.set_default_tensor_type(torch.cuda.FloatTensor)
 
-        self.rawRatingsDF = pd.read_csv(
-            f"{data_dir}/{ratings_path}",
-            sep=ratings_sep,
-            header=0,
-            engine="python",
-            encoding="latin-1",
-        )
-        if items_path != "":
-            self.itemsDF = pd.read_csv(
-                f"{data_dir}/{items_path}",
-                sep=items_sep,
+        try:
+            self.rawRatingsDF = pd.read_csv(
+                f"{data_dir}/{loading_params.ratings_path}",
+                sep=loading_params.ratings_sep,
                 header=0,
                 engine="python",
                 encoding="latin-1",
             )
+        except FileNotFoundError:
+            print("The ratings file doesn't exist!")
 
-        if links_path != "":
+        try:
+            self.itemsDF = pd.read_csv(
+                f"{data_dir}/{loading_params.items_path}",
+                sep=loading_params.items_sep,
+                header=0,
+                engine="python",
+                encoding="latin-1",
+            )
+        except FileNotFoundError:
+            print("The items file doesn't exist!")
+
+        try:
             linksDF = pd.read_csv(
                 f"{data_dir}/{links_path}",
                 sep=links_sep,
@@ -59,8 +86,13 @@ class MyDataset:
             self.itemsDF = pd.concat([self.itemsDF, linksDF], axis=1, join="inner")
             self.itemsDF = self.itemsDF.loc[:, ~self.itemsDF.T.duplicated(keep="first")]
 
+        except FileNotFoundError:
+            print("The links file doesn't exist!")
+        except NameError:
+            print("The links parameter aren't initialized!")
+
         self.rawRatingsDF.columns = ["user", "item", "rating", "timestamp"]
-        self.rawRatingsDF["rating"] *= 2
+        self.rawRatingsDF["rating"] *= 1
         self.rawRatingsDF = self.rawRatingsDF.rename(
             columns={"userId": "user", "movieId": "item"}
         )
@@ -92,7 +124,7 @@ class MyDataset:
         self.convertRatings2InnerIDs()
 
     def trainTestValidationSplit(self):
-        self.trainUsers, self.testUsers = train_test_split(self.allUsers, test_size=0.2)
+        self.trainUsers, self.testUsers = train_test_split(self.allUsers, test_size=0.4)
         self.validationUsers, self.testUsers = train_test_split(
             self.testUsers, test_size=0.5
         )
@@ -127,7 +159,7 @@ class MyDataset:
         )
 
     def batches(self, data: pd.DataFrame, batch_size: int):
-        batcher = Batcher(data, batch_size, (self.nItems, 10))
+        batcher = Batcher(data, batch_size, (self.nItems, 5))
         return batcher.next()
 
     def getRawUserRatings(self, uid):
@@ -175,14 +207,8 @@ class Batcher:
 
 
 if __name__ == "__main__":
-    dataAccess = MyDataset(
-        data_dir="ml-20m",
-        ratings_path="ratings.csv",
-        ratings_sep="::",
-        items_path="movies.csv",
-        items_sep="::",
-    )
+    dataAccess = MyDataset("ml-1m")
     dataAccess.trainTestValidationSplit()
     trainset = dataAccess.trainset
     for b in dataAccess.batches(dataAccess.trainData, 1024):
-        pass
+        print(b.shape)
