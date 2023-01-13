@@ -124,7 +124,7 @@ class MyDataset:
         self.convertRatings2InnerIDs()
 
     def trainTestValidationSplit(self):
-        self.trainUsers, self.testUsers = train_test_split(self.allUsers, test_size=0.4)
+        self.trainUsers, self.testUsers = train_test_split(self.allUsers, test_size=0.2)
         self.validationUsers, self.testUsers = train_test_split(
             self.testUsers, test_size=0.5
         )
