@@ -201,10 +201,10 @@ class RBM:
         self.params.w += w_delta * self.alpha
 
         # apply momentum if applicable
-        # if self.momentum > 0.0 and hasattr(self, "prev_w_delta"):
-        #     self.params.v += self.trainingParams.prev_vd * self.hyperParams.momentum
-        #     self.params.h += self.trainingParams.prev_hd * self.hyperParams.momentum
-        #     self.params.w += self.trainingParams.prev_wd * self.hyperParams.momentum
+        if self.hyperParams.momentum > 0.0 and hasattr(self, "prev_w_delta"):
+            self.params.v += self.trainingParams.prev_vd * self.hyperParams.momentum
+            self.params.h += self.trainingParams.prev_hd * self.hyperParams.momentum
+            self.params.w += self.trainingParams.prev_wd * self.hyperParams.momentum
 
         # remember the deltas for next training step when using momentum
         # self.prev_w_delta = w_delta
@@ -230,9 +230,7 @@ class RBM:
         #     self.w += torch.ones_like(self.w) * sparsity_penalty
         #     self.q_prev = q_new
 
-        se, ae, n = self.batch_error(minibatch)
-        rmse = math.sqrt(se / n)
-        mae = ae / n
+        rmse, mae = self.batch_error(minibatch)
 
         return rmse, mae
 
@@ -327,7 +325,7 @@ class RBM:
                 print(epoch, end="\t", flush=True)
 
             current = 0
-            rmse = mae = 0
+            rmse = mae = n = 0
 
             for minibatch in data.batches(data.trainData, self.hyperParams.batch_size):
                 _rmse, _mae = self.apply_gradient(
@@ -337,19 +335,24 @@ class RBM:
                 )
                 rmse += _rmse
                 mae += _mae
+                n += 1
+
                 if self.verbose:
                     current += 1
                     if current >= _5pct:
                         print("#", end="", flush=True)
                         current = 0
 
+            rmse /= n
+            mae /= n
+
             if self.verbose:
                 print("\t", end="", flush=True)
-                print(format(rmse / numBatches, ".6f"), end="\t")
-                print(format(mae / numBatches, ".6f"), end="\t")
+                print(format(rmse, ".6f"), end="\t")
+                print(format(mae, ".6f"), end="\t")
 
-            self.metrics.trainRMSE += [rmse / numBatches]
-            self.metrics.trainMAE += [mae / numBatches]
+            self.metrics.trainRMSE += [rmse]
+            self.metrics.trainMAE += [mae]
 
             rmse, mae = self.calculate_errors("validation")
             self.metrics.validRMSE += [rmse]
@@ -407,8 +410,8 @@ class RBM:
         self.params.h = torch.zeros(hp.hidden_shape, device=self.device)
 
     def calculate_errors(self, s):
-        se = 0
-        ae = 0
+        rmse = 0
+        mae = 0
         n = 0
 
         if s == "validation":
@@ -417,31 +420,28 @@ class RBM:
             data = self.data.testData
         else:
             data = self.data.trainData
-
+        n = 0
         for v in self.data.batches(data, self.hyperParams.batch_size):
-            _se, _ae, _n = self.batch_error(v)
-            ae += _ae
-            se += _se
-            n += _n
-        return math.sqrt(se / n), ae / n
+            _rmse, _mae = self.batch_error(v)
+            rmse += _rmse
+            mae += _mae
+            n += 1
+        return rmse / n, mae / n
 
     def batch_error(self, v):
-        se = 0
-        ae = 0
-        n = 0
-
         rec = self.reconstruct(v)
-        n += len(v[v.sum(dim=2) > 0])
+        n = v.sum().item()
+
         vRating = onehot_to_ratings(v)
         recRating = onehot_to_ratings(rec)
 
         # set the same value for missing values so they don't affect error calculation
         recRating[v.sum(dim=2) == 0] = vRating[v.sum(dim=2) == 0]
 
-        se += ((recRating - vRating) * (recRating - vRating)).sum().item()
-        ae += torch.abs(recRating - vRating).sum().item()
+        se = ((recRating - vRating) ** 2).sum().item()
+        ae = (recRating - vRating).abs().sum().item()
 
-        return se, ae, n
+        return sqrt(se / n), ae / n
 
 
 if __name__ == "__main__":
