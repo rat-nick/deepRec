@@ -1,11 +1,12 @@
+import time
 from dataclasses import dataclass
-from random import shuffle
 from pathlib import Path
+from random import shuffle
+
 import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 from surprise import Dataset, Reader
-import time
 
 DATA_DIR = Path(__file__).parent / "ml-20m"
 RATINGS_FILE = "ratings.csv"
@@ -25,8 +26,8 @@ DATASETS_DICT = {
     "ml-100k": DataLoadingParams(
         "u.data",
         "\t",
-        "u.items",
-        "::",
+        "u.item",
+        "|",
     ),
     "ml-1m": DataLoadingParams(
         "ratings.dat",

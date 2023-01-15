@@ -1,10 +1,12 @@
+from __future__ import absolute_import
+
 from flask import Flask, request
 from flask_cors import CORS, cross_origin
 from surprise import Dataset, Reader
 from surprise.dataset import DatasetAutoFolds
 
-from ..recommender.algo.RBMAlgorithm import RBMAlgorithm
-from ..recommender.RecommenderEngine import RecommenderEngine
+from deepRec.recommender.algo.RBMAlgorithm import RBMAlgorithm
+from deepRec.recommender.RecommenderEngine import RecommenderEngine
 from .DAL import *
 import pprint
 

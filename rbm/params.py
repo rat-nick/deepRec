@@ -1,17 +1,18 @@
 from dataclasses import dataclass, field
-import torch
+
 import numpy as np
+import torch
 
 
 @dataclass
-class RBMParams:
+class Params:
     w: torch.Tensor = None
     v: torch.Tensor = None
     h: torch.Tensor = None
 
 
 @dataclass
-class RBMMetrics:
+class Metrics:
     trainRMSE: list = field(default_factory=list)
     trainMAE: list = field(default_factory=list)
     validRMSE: list = field(default_factory=list)
@@ -27,7 +28,7 @@ class RBMMetrics:
 
 
 @dataclass
-class RBMTrainingParams:
+class TrainingParams:
     # decay: lambda x: x
     prev_wd: torch.Tensor = None
     prev_vd: torch.Tensor = None
@@ -37,9 +38,7 @@ class RBMTrainingParams:
 
 
 @dataclass
-class RBMHyperParams:
-    visible_shape: tuple
-    hidden_shape: tuple
+class HyperParams:
     batch_size: int
     lr: float
     l1: float = 0

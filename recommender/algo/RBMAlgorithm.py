@@ -1,12 +1,14 @@
+from __future__ import absolute_import
 import torch
-from ..model.RBM import RBM
-from ..RecommenderBase import RecommenderBase
+
+from recommender.model.RBM import RBM
+from recommender.RecommenderBase import RecommenderBase
 from surprise import PredictionImpossible
 from surprise.dataset import Dataset
 from surprise.model_selection import ShuffleSplit
 
-from ..utils.tensors import *
-from ...data.dataset import MyDataset
+from recommender.utils.tensors import *
+from data.dataset import MyDataset
 
 
 class RBMAlgorithm(RecommenderBase):
@@ -52,7 +54,7 @@ class RBMAlgorithm(RecommenderBase):
         user = int(user)
 
         ratings = self.dataset.getInnerUserRatings(user)
-        t = torch.zeros((self.dataset.nItems, 10))
+        t = torch.zeros((self.dataset.nItems, 5))
         t[ratings["item"].to_numpy(), ratings["rating"].to_numpy() - 1] = 1.0
         y = self.model.reconstruct(t.unsqueeze(0))
         y = softmax_to_rating(y)
@@ -73,21 +75,13 @@ class RBMAlgorithm(RecommenderBase):
 
         rec = onehot_to_ranking(rec)
 
-        print(rec.shape)
-        # print(rec)
-        # print(ratings)
         rec = rec[0]
         for movie, _ in ratings:
             rec[movie] = 0
 
-        # print(rec)
         rec = list(rec.detach().numpy())
         rec = [(i, x.item()) for i, x in enumerate(rec)]
-        # print(rec)
-        # rec.sort(key=lambda x: x[1], reverse=True)
-        # print("BBBB")
-        # print("RECOMMENDING:")
-        # print(rec[:50])
+
         return rec
 
 
