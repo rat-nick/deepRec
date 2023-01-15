@@ -31,6 +31,7 @@ class Optimizer:
         self.patience = 0
 
     def fit(self):
+        self.patience = 0
         loading = "-" * 20
         if self.verbose:
             print(f"#####\t{loading}\tTRAIN\t\t\t\tVALIDATION")
