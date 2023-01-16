@@ -86,7 +86,7 @@ class Model(nn.Module):
         torch.save(self.state_dict(), DEFAULT_PATH)
 
     def load(self, path):
-        self.load_state_dict(torch.load(path))
+        self.load_state_dict(torch.load(path, map_location=torch.device(self.device)))
 
     def sample_h_given_v(
         self,
