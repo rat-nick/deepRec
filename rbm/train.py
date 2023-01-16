@@ -7,7 +7,7 @@ from . import model, optimizer, params
 ds = dataset.MyDataset("ml-1m")
 ds.trainTestValidationSplit()
 
-rbm = model.Model((ds.nItems, 5), (200,), dev="cuda")
+rbm = model.Model((ds.nItems, 5), (200,), device="cuda")
 rbm.summarize()
 
 hyperParams = params.HyperParams(

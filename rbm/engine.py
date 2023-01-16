@@ -3,7 +3,7 @@ import os
 import torch
 
 from data.dataset import MyDataset as Dataset
-from utils.tensors import onehot_to_ranking
+from utils.tensors import onehot_to_ranking, softmax_to_rating
 
 from .model import Model
 
@@ -13,7 +13,7 @@ class Engine:
         self.dataset = dataset
         self.model = model
 
-    def recommend(self, ratings):
+    def recommend(self, ratings, evaluating=False):
 
         t = torch.zeros((1, self.dataset.nItems, 5))
 
@@ -22,17 +22,27 @@ class Engine:
 
         rec = self.model(t)
 
-        rec = onehot_to_ranking(rec)
+        rec = softmax_to_rating(rec)
 
-        rec = rec[0]
-        for movie, _ in ratings:
-            rec[movie] = 0
+        # rec = rec[0]
+        if not evaluating:
+            for movie, _ in ratings:
+                rec[movie] = 0
 
         rec = list(rec.detach().numpy())
         rec = [(i, x.item()) for i, x in enumerate(rec)]
 
         rec.sort(key=lambda x: x[1], reverse=True)
         return rec
+
+    def recommendForUser(self, user):
+        df = self.dataset.innerRatingsDF
+
+        ratings = df[df["user"] == user]
+        ratings = [
+            (i, r) for u, i, r in list(ratings.itertuples(index=False, name=None))
+        ]
+        return self.recommend(ratings, True)
 
 
 if __name__ == "__main__":

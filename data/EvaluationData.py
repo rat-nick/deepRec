@@ -1,3 +1,5 @@
+from typing import List, Tuple
+
 from .dataset import MyDataset
 
 
@@ -5,11 +7,14 @@ class EvaluationData:
     def __init__(self, dataset: MyDataset):
         self.dataset = dataset
 
-    def getUserRatings(self, user):
+    def getUserRatings(self, user) -> List[Tuple[int, float]]:
+
         ratings = self.dataset.innerRatingsDF.loc[
             self.dataset.innerRatingsDF["user"] == user
         ]
         ratings = ratings[["item", "rating"]]
+        ratings = [(i, r) for u, i, r in list(ratings.itertuples(index=False))]
+
         return ratings
 
 

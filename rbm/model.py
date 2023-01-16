@@ -20,7 +20,7 @@ class Model(nn.Module):
         self,
         visible_shape: Tuple = None,
         hidden_shape: Tuple = None,
-        dev: str = "cpu",
+        device: str = "cpu",
         path: str = "",
     ) -> None:
         """Creates an RBM model with the given visible and hidden shapes
@@ -38,13 +38,13 @@ class Model(nn.Module):
 
         # initialize model parameters
         self.vB = nn.Parameter(
-            torch.zeros(visible_shape, device=dev), requires_grad=False
+            torch.zeros(visible_shape, device=device), requires_grad=False
         )
         self.hB = nn.Parameter(
-            torch.zeros(hidden_shape, device=dev), requires_grad=False
+            torch.zeros(hidden_shape, device=device), requires_grad=False
         )
         self.w = nn.Parameter(
-            torch.randn(visible_shape + hidden_shape, device=dev) * 1e-2,
+            torch.randn(visible_shape + hidden_shape, device=device) * 1e-2,
             requires_grad=False,
         )
 
@@ -56,7 +56,7 @@ class Model(nn.Module):
         self.register_buffer("epoch", torch.zeros(1, dtype=torch.int32))
 
         # set the device for the tensors
-        self.device = dev
+        self.device = device
 
         if path != "":
             self.load(path)
