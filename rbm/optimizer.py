@@ -81,7 +81,7 @@ class Optimizer:
 
             if (
                 self.model.current_epoch < 1
-                or self.model.latestRMSE < self.model.bestRMSE
+                or self.model.latestRMSE == self.model.bestRMSE
             ):
                 self.model.save()
 
