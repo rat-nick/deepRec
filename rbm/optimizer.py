@@ -2,7 +2,7 @@ import math
 from typing import Tuple
 
 import torch
-
+from torch.utils.tensorboard import SummaryWriter
 from data import dataset
 from utils.tensors import onehot_to_ratings
 
@@ -29,6 +29,7 @@ class Optimizer:
         self.decay = lambda x: x
 
         self.patience = 0
+        self.writter = SummaryWriter()
 
     def fit(self):
         self.patience = 0
@@ -71,6 +72,13 @@ class Optimizer:
             self.model.get_buffer("train_mae")[self.model.current_epoch] = mae
 
             rmse, mae = self.calculate_errors("validation")
+
+            self.writter.add_scalar("Validation/RMSE", rmse, epoch)
+            self.writter.add_scalar("Validation/MAE", mae, epoch)
+            self.writter.add_histogram("Params/W", self.model.w, epoch)
+            self.writter.add_histogram("Params/vB", self.model.vB, epoch)
+            self.writter.add_histogram("Params/hB", self.model.hB, epoch)
+
             self.model.get_buffer("valid_rmse")[self.model.current_epoch] = rmse
             self.model.get_buffer("valid_mae")[self.model.current_epoch] = mae
 
@@ -89,6 +97,7 @@ class Optimizer:
                 self.model.next_epoch()
                 return
 
+            self.writter.flush()
             self.model.next_epoch()
 
     def calculate_errors(self, s):
