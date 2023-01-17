@@ -1,7 +1,7 @@
 import torch
+from surprise import Dataset as sDataset
 from torch import Tensor
 from torch.utils.data import Dataset as tDataset
-from surprise import Dataset as sDataset
 
 
 class Dataset(tDataset):
@@ -18,7 +18,7 @@ class Dataset(tDataset):
 
         for u, i, r in self.data.all_ratings():
             if u == index:
-                t[i] = r / 5.0
+                t[i] = 1.0 if r > 3.5 else 0.0
 
         if torch.cuda.is_available():
             t = t.to(torch.device("cuda"))

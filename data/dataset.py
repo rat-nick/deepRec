@@ -39,14 +39,11 @@ DATASETS_DICT = {
 
 
 class MyDataset:
-    def __init__(
-        self,
-        dataset="ml-100k",
-    ):
+    def __init__(self, dataset="ml-100k", device="cuda"):
 
         loading_params = DATASETS_DICT[dataset]
         data_dir = Path(__file__).parent / dataset
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and device == "cuda":
             print("CUDA available! Setting default tensor type to cuda.FloatTensor")
             torch.set_default_tensor_type(torch.cuda.FloatTensor)
 

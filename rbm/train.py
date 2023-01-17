@@ -24,9 +24,19 @@ opt.t = 7
 opt.fit()
 
 plt.title("RBM RMSE loss")
-plt.plot(rbm.get_buffer("valid_rmse").to("cpu")[: rbm.current_epoch])
 plt.plot(rbm.get_buffer("train_rmse").to("cpu")[: rbm.current_epoch])
-plt.legend(["valid rmse", "train rmse"])
+plt.plot(rbm.get_buffer("valid_rmse").to("cpu")[: rbm.current_epoch])
+plt.legend(["train", "valid"])
 
 plt.savefig("RMSE.png")
-input()
+
+n = 0
+rmse = mae = 0
+for minibatch in ds.batches(ds.testData, 1):
+    rbm.eval()
+    _1, _2 = opt.batch_error(minibatch)
+    rmse += _1
+    mae += _2
+    n += 1
+
+print("Testing loss: RMSE : %.5f \t MAE : %.5f " % (rmse / n, mae / n))

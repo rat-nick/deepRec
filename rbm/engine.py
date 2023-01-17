@@ -24,12 +24,11 @@ class Engine:
 
         rec = softmax_to_rating(rec)
 
-        # rec = rec[0]
         if not evaluating:
             for movie, _ in ratings:
                 rec[movie] = 0
 
-        rec = list(rec.detach().numpy())
+        rec = list(rec.cpu().detach().numpy())
         rec = [(i, x.item()) for i, x in enumerate(rec)]
 
         rec.sort(key=lambda x: x[1], reverse=True)

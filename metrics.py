@@ -1,7 +1,8 @@
 import itertools
+import math
+from collections import defaultdict
 
 from surprise import accuracy
-from collections import defaultdict
 
 
 class RecommenderMetrics:
@@ -173,7 +174,11 @@ class RecommenderMetrics:
         return total / n
 
     def PrecissionAtK(self, k, recommendations, userRatings, relevancyThreshold=3.5):
-        relevant = [i for i, r in userRatings if r > relevancyThreshold]
+        relevant = [(i, r) for i, r in userRatings if r > relevancyThreshold]
+        # TODO: see if this makes sense
+        relevant.sort(key=lambda x: x[1], reverse=True)
+        relevant = relevant[:k]
+        relevant = list(map(lambda x: x[0], relevant))
         total = 0
         recommendations = recommendations[:k]
         for p in recommendations:
@@ -183,11 +188,54 @@ class RecommenderMetrics:
         return total / k
 
     def RecallAtK(self, k, recommendations, userRatings, relevancyThreshold=3.5):
-        relevant = [i for i, r in userRatings if r > relevancyThreshold]
+        relevant = [(i, r) for i, r in userRatings if r > relevancyThreshold]
+        # TODO: see if this makes sense
+        relevant.sort(key=lambda x: x[1], reverse=True)
+        relevant = relevant[:k]
+        relevant = list(map(lambda x: x[0], relevant))
         total = 0
         recommendations = recommendations[:k]
         for p in recommendations:
             if p[0] in relevant:
                 total += 1
-
+        if len(relevant) == 0:
+            return 0
         return total / len(relevant)
+
+    def F1AtK(self, k, recommendations, userRatings, relevancyThreshold=3.5):
+        r = self.RecallAtK(k, recommendations, userRatings, relevancyThreshold)
+        p = self.PrecissionAtK(k, recommendations, userRatings, relevancyThreshold)
+        if (r + p) == 0:
+            return 0
+        return 2 * (r * p) / (r + p)
+
+    def DCGAtK(self, k, recommendations, userRatings, relevancyThreshold=3.5):
+        relevant = sorted(userRatings, key=lambda x: x[1], reverse=True)
+        relevant = list(map(lambda x: x[0], relevant))[:k]
+        recommendations = recommendations[:k]
+        dcg = 0
+        i = 1
+        for r in recommendations:
+            if r[0] in relevant:
+                dcg += 1 / math.log2(i + 1)
+            i += 1
+
+        return dcg
+
+    def iDCGAtK(self, k, userRatings, relevancyThreshold=3.5):
+        ideal = sorted(userRatings, key=lambda x: x[1], reverse=True)
+        ideal = ideal[:k]
+        idcg = 0
+        i = 1
+        for r in ideal:
+            v = 1 if r[1] >= relevancyThreshold else 0
+            idcg += v / math.log2(i + 1)
+        return idcg
+
+    def NDCGAtK(self, k, recommendations, userRatings, relevancyThreshold=3.5):
+        dcg = self.DCGAtK(k, recommendations, userRatings, relevancyThreshold)
+        idcg = self.iDCGAtK(k, userRatings, relevancyThreshold)
+
+        if idcg == 0:
+            return 0
+        return dcg / idcg

@@ -1,6 +1,7 @@
 from typing import List, Tuple
 
 from .dataset import MyDataset
+import numpy as np
 
 
 class EvaluationData:
@@ -13,9 +14,15 @@ class EvaluationData:
             self.dataset.innerRatingsDF["user"] == user
         ]
         ratings = ratings[["item", "rating"]]
-        ratings = [(i, r) for u, i, r in list(ratings.itertuples(index=False))]
+        ratings = [(i, r) for i, r in list(ratings.itertuples(index=False))]
 
         return ratings
+
+    def splitUsersRatings(self, user, ratio: float = 0.2) -> Tuple[list, list]:
+        ratings = self.getUserRatings(user)
+        np.random.shuffle(ratings)
+        ratings, held_out_ratings = np.split(ratings, [int(ratio * len(ratings))])
+        return ratings, held_out_ratings
 
 
 if __name__ == "__main__":
