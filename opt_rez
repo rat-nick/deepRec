@@ -1,7 +1,0 @@
-Start search...
-[Parallel(n_jobs=-1)]: Using backend LokyBackend with 12 concurrent workers.
-[Parallel(n_jobs=-1)]: Done  10 out of  24 | elapsed:  2.2min remaining:  3.1min
-[Parallel(n_jobs=-1)]: Done  19 out of  24 | elapsed:  6.3min remaining:  1.7min
-[Parallel(n_jobs=-1)]: Done  24 out of  24 | elapsed:  6.5min finished
-1.0290830125705395
-{'n_hidden': 50, 'learning_rate': 0.1, 'batch_size': 10, 'l1': 0.1, 'l2': 0.01, 'early_stopping': True}
