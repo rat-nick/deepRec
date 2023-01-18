@@ -15,17 +15,15 @@ We used the [ml-1m](https://files.grouplens.org/datasets/movielens/ml-1m.zip) da
 
 ### Training models
 
-From the root directory run 
+To train an RBM model run
 
 ```
 python -m rbm.train
 ```
 
-to train an RBM model and
-
+To train a VAE model run
 
 ```
 python -m vae.train
 ```
 
-to train a VAE model.
