@@ -12,6 +12,7 @@ from . import dataset
 from .model import Model as VAE
 from .optimizer import elbo
 
+gen = torch.manual_seed(42)
 
 parser = argparse.ArgumentParser(
     description="Training script for Variational Autoencoder"
@@ -41,6 +42,7 @@ parser.add_argument(
     "--save", type=str, default="model.pt", help="path to save the final model"
 )
 
+
 args = parser.parse_args()
 
 
@@ -59,7 +61,7 @@ def validate():
             minibatch.to(device)
             vae.train()
             x, mu, logvar = vae(minibatch)
-            batch_loss = elbo(x, minibatch, mu, logvar, 0)
+            batch_loss = elbo(x, minibatch, mu, logvar, anneal)
             valid_loss += batch_loss / valid_loader.batch_size
 
             t, v = e.splitRatings(minibatch[0])
@@ -112,25 +114,25 @@ device = (
 
 ds = dataset.Dataset(device=device)
 
-train_size = int(0.9 * len(ds))
+train_size = int(0.8 * len(ds))
 valid_size = int((len(ds) - train_size) / 2)
 test_size = len(ds) - train_size - valid_size
 
 trainset, validset, testset = random_split(
-    ds, lengths=[train_size, valid_size, test_size]
+    ds, lengths=[train_size, valid_size, test_size], generator=gen
 )
 
 
 train_loader = DataLoader(
     trainset,
     batch_size=args.batch_size,
-    shuffle=True,
+    # shuffle=True,
     # generator=torch.Generator(device=device),
 )
 valid_loader = DataLoader(
     validset,
     batch_size=1,
-    shuffle=True,
+    # shuffle=True,
     # generator=torch.Generator(device=device),
 )
 test_loader = DataLoader(
