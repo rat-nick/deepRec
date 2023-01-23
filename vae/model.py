@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 DEFAULT_PATH = "vae/vae.pt"
 
@@ -9,25 +10,22 @@ class Model(nn.Module):
         self,
         input_size,
         latent_size,
-        encoder_layers=[1024, 512, 256, 128],
-        decoder_layers=[128, 256, 512, 1024],
-        device="cpu",
+        encoder_layers=[600],
+        decoder_layers=[600],
+        device=torch.device("cpu"),
         path="",
     ):
         super(Model, self).__init__()
 
         self.drop = nn.Dropout()
-
-        if device == "cuda" and torch.cuda.is_available():
-            torch.set_default_tensor_type(torch.cuda.FloatTensor)
-            print("Using cuda!")
-
         self.encoder = Encoder(input_size, latent_size, encoder_layers)
         self.decoder = Decoder(latent_size, input_size, decoder_layers)
 
-        self.register_buffer("train_loss", torch.ones(1000) * float("inf"))
-        self.register_buffer("valid_loss", torch.ones(1000) * float("inf"))
-        self.register_buffer("epoch", torch.zeros(1, dtype=torch.int16))
+        if device == torch.device("cuda"):
+            self.encoder.to("cuda")
+            self.decoder.to("cuda")
+
+        self.apply(init_weights)
 
         if path != "":
             self.load(path)
@@ -42,12 +40,16 @@ class Model(nn.Module):
             return mu
 
     def forward(self, inputs):
+        inputs = inputs / 5.0
         if self.training:
             inputs = self.drop(inputs)
         mu, logvar = self.encoder(inputs)
         tensor = self.reparametrize(mu, logvar)
         tensor = self.decoder(tensor)
-        return tensor, mu, logvar
+        if self.training:
+            return tensor, mu, logvar
+        else:
+            return tensor
 
     @property
     def trainable_parameters(self):
@@ -76,7 +78,7 @@ class Encoder(nn.Module):
         i = 0
         for layer in layers:
             self.deepNN.add_module(f"ff{i}", nn.Linear(input_size, layer))
-            self.deepNN.add_module(f"activation{i}", nn.Sigmoid())
+            self.deepNN.add_module(f"activation{i}", nn.Tanh())
             input_size = layer
             i += 1
 
@@ -101,12 +103,12 @@ class Decoder(nn.Module):
         i = 0
         for layer in layers:
             self.deepNN.add_module(f"ff{i}", nn.Linear(input_size, layer))
-            self.deepNN.add_module(f"activation{i}", nn.Sigmoid())
+            self.deepNN.add_module(f"activation{i}", nn.Tanh())
             input_size = layer
             i += 1
 
         self.deepNN.add_module("output", nn.Linear(layer, output_size))
-        self.deepNN.add_module("final_activation", nn.Sigmoid())
+        # self.deepNN.add_module("final_activation", nn.Sigmoid())
 
     def forward(self, inputs):
         tensor = self.deepNN(inputs)
@@ -122,3 +124,9 @@ if __name__ == "__main__":
     vae = Model(3000, 500)
 
     print(vae.trainable_parameters)
+
+
+def init_weights(m):
+    if type(m) == nn.Linear:
+        nn.init.xavier_normal_(m.weight)
+        nn.init.normal_(m.bias, std=0.01)

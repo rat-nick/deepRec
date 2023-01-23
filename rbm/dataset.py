@@ -7,7 +7,7 @@ from torch.utils.data import Dataset as tDataset
 class Dataset(tDataset):
     def __init__(self, device=torch.device("cpu")):
         super(tDataset, self).__init__()
-        self.data = torch.load("vae/sparse.pt", map_location=device)
+        self.data = torch.load("rbm/sparse.pt", map_location=device)
 
     def __len__(self):
         return self.data.shape[0]
@@ -25,4 +25,4 @@ class Dataset(tDataset):
 
     @property
     def ratings_scale(self):
-        return 5
+        return self.data.shape[2]
