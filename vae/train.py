@@ -55,6 +55,9 @@ def validate():
     n = 0
     recall50 = 0
     recall20 = 0
+    precision5 = 0
+    precision10 = 0
+
     ndcg = 0
     with torch.no_grad():
         for minibatch in valid_loader:
@@ -71,12 +74,16 @@ def validate():
             ndcg += tm.ndcg(rec, v, 100)
             recall50 += tm.recall(rec, v, 50)
             recall20 += tm.recall(rec, v, 20)
+            precision5 += tm.precision(rec, v, 5)
+            precision10 += tm.precision(rec, v, 10)
             n += 1
 
     writter.add_scalar("valid/loss", valid_loss / n, epoch)
     writter.add_scalar(f"valid/recall@{20}", recall20 / n, epoch)
     writter.add_scalar(f"valid/recall@{50}", recall50 / n, epoch)
     writter.add_scalar(f"valid/ndcg@{100}", ndcg / n, epoch)
+    writter.add_scalar(f"valid/precision@{5}", precision5 / n, epoch)
+    writter.add_scalar(f"valid/precision@{10}", precision10 / n, epoch)
 
     return ndcg
 
@@ -111,8 +118,9 @@ device = (
     else torch.device("cpu")
 )
 
-
 ds = dataset.Dataset(device=device)
+tr = dataset.Trainset("data/folds/1/train.csv", device=device)
+va = dataset.Validset("data/folds/1/valid.csv", device=device)
 
 train_size = int(0.8 * len(ds))
 valid_size = int((len(ds) - train_size) / 2)
