@@ -10,8 +10,9 @@ def recall(preds: torch.Tensor, target: torch.Tensor, k: int = 10):
 
 
 def precision(preds: torch.Tensor, target: torch.Tensor, k: int = 10):
-    # target = target > 3.5
-    # preds = preds / 5
+    target = target > 3.5
+    preds -= preds.min()
+    preds /= preds.max()
     return tmf.retrieval_precision(preds, target, k=k)
 
 
