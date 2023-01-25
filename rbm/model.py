@@ -1,4 +1,3 @@
-import sys
 from typing import Tuple
 
 import torch
@@ -149,7 +148,9 @@ class Model(nn.Module):
         return pv
 
     def gibbs_sample(
-        self, input: torch.Tensor, t: int = 1
+        self,
+        input: torch.Tensor,
+        t: int = 1,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Perform Gibb's sampling for t steps
