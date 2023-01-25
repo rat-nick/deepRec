@@ -180,3 +180,5 @@ data/ml-*
 .vscode
 # tensorboard runs
 runs
+folds
+clean*

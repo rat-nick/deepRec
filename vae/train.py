@@ -12,173 +12,158 @@ from . import dataset
 from .model import Model as VAE
 from .optimizer import elbo
 
-gen = torch.manual_seed(42)
 
-parser = argparse.ArgumentParser(
-    description="Training script for Variational Autoencoder"
-)
-parser.add_argument(
-    "--dataset", type=str, default="ml-1m", help="Which dataset should the model fit"
-)
-parser.add_argument("--lr", type=float, default=1e-4, help="initial learning rate")
-parser.add_argument("--wd", type=float, default=0.00, help="weight decay coefficient")
-parser.add_argument("--batch-size", type=int, default=100, help="batch size")
-parser.add_argument("--epochs", type=int, default=200, help="upper epoch limit")
-parser.add_argument(
-    "--total-anneal-steps",
-    type=int,
-    default=2000,
-    help="the total number of gradient updates for annealing",
-)
-parser.add_argument(
-    "--anneal-cap", type=float, default=0.2, help="largest annealing parameter"
-)
-parser.add_argument("--seed", type=int, default=1111, help="random seed")
-parser.add_argument("--cuda", action="store_true", help="use CUDA")
-parser.add_argument(
-    "--log-interval", type=int, default=100, metavar="N", help="report interval"
-)
-parser.add_argument(
-    "--save", type=str, default="model.pt", help="path to save the final model"
-)
+class Trainer:
+    def __init__(
+        self,
+        model: VAE,
+        trainset: dataset.Trainset,
+        validset: dataset.Testset,
+        testset: dataset.Testset,
+        epochs: int = 100,
+        batch_size: int = 100,
+        anneal_steps: int = 2000,
+        anneal_cap: float = 0.2,
+        lr: float = 1e-4,
+        device: str = "cpu",
+        save_path: str = "vae/vae.pt",
+    ):
+        self.model = model
+        self.trainset = trainset
+        self.validset = validset
+        self.testset = testset
+        self.epochs = epochs
+        self.anneal_steps = anneal_steps
+        self.anneal_cap = anneal_cap
+        self.batch_size = batch_size
+        self.lr = lr
+        self.device = (
+            torch.device("cuda")
+            if device == "cuda" and torch.cuda.is_available()
+            else torch.device("cpu")
+        )
+        self.n = 0
 
+        self.train_loader = DataLoader(self.trainset, batch_size=batch_size)
+        self.valid_loader = DataLoader(self.validset, batch_size=1)
+        self.test_loader = DataLoader(self.testset, batch_size=1)
 
-args = parser.parse_args()
+        self.writter = SummaryWriter()
+        self.save_path = save_path
 
+    def fit(self):
+        self.opt = Adam(self.model.parameters(), lr=self.lr)
+        best_ndcg = 0
+        self.n = 0
+        for epoch in range(0, self.epochs):
 
-anneal_steps = args.total_anneal_steps
+            train_loss = self.train()
+            self.writter.add_scalar("train/loss", train_loss, epoch)
+            current_ndcg = self.test(epoch, self.validset)
 
+            if current_ndcg > best_ndcg:
+                torch.save(self.model, self.save_path)
 
-def validate():
+    def train(self):
+        self.model.train()
+        n = 0
+        loss = 0
+        for minibatch in self.train_loader:
+            minibatch = minibatch.to(self.device)
 
-    valid_loss = 0
-    n = 0
-    recall50 = 0
-    recall20 = 0
-    precision5 = 0
-    precision10 = 0
+            if self.anneal_steps > 0:
+                self.anneal = min(
+                    self.anneal_cap, self.anneal_cap * (self.n / self.anneal_steps)
+                )
 
-    ndcg = 0
-    with torch.no_grad():
-        for minibatch in valid_loader:
-            minibatch.to(device)
-            vae.train()
-            x, mu, logvar = vae(minibatch)
-            batch_loss = elbo(x, minibatch, mu, logvar, anneal)
-            valid_loss += batch_loss / valid_loader.batch_size
+            x, mu, logvar = self.model(minibatch)
+            self.opt.zero_grad()
+            batch_loss = elbo(x, minibatch, mu, logvar, self.anneal)
+            batch_loss.backward()
+            loss += batch_loss / self.batch_size
+            self.opt.step()
 
-            t, v = e.splitRatings(minibatch[0])
-            vae.eval()
-            rec = vae(t)
-            rec[t.nonzero()] = 0
-            ndcg += tm.ndcg(rec, v, 100)
-            recall50 += tm.recall(rec, v, 50)
-            recall20 += tm.recall(rec, v, 20)
-            precision5 += tm.precision(rec, v, 5)
-            precision10 += tm.precision(rec, v, 10)
             n += 1
+            self.n += 1
 
-    writter.add_scalar("valid/loss", valid_loss / n, epoch)
-    writter.add_scalar(f"valid/recall@{20}", recall20 / n, epoch)
-    writter.add_scalar(f"valid/recall@{50}", recall50 / n, epoch)
-    writter.add_scalar(f"valid/ndcg@{100}", ndcg / n, epoch)
-    writter.add_scalar(f"valid/precision@{5}", precision5 / n, epoch)
-    writter.add_scalar(f"valid/precision@{10}", precision10 / n, epoch)
+        return loss / n
 
-    return ndcg
+    def test(self, epoch, testset: dataset.Testset, benchmarking: bool = False):
+        loader = DataLoader(testset, batch_size=1)
 
+        loss = 0
+        recall50 = 0
+        recall20 = 0
+        precision5 = 0
+        precision10 = 0
+        ndcg = 0
+        n = 0
+        with torch.no_grad():
+            for fi, ho in loader:
+                fi = fi.to(self.device)
+                ho = ho.to(self.device)
 
-def train():
-    global n_updates
-    global n
-    train_loss = 0
-    vae.train()
-    for minibatch in train_loader:
-        minibatch.to(device)
+                self.model.train()
 
-        if anneal_steps > 0:
-            anneal = min(args.anneal_cap, args.anneal_cap * (n_updates / anneal_steps))
-        # print(f"Anneal:{anneal}")
+                x, mu, logvar = self.model(fi)
+                batch_loss = elbo(x, fi, mu, logvar, self.anneal)
+                loss += batch_loss / loader.batch_size
 
-        x, mu, logvar = vae(minibatch)
-        opt.zero_grad()
-        batch_loss = elbo(x, minibatch, mu, logvar, anneal)
-        batch_loss.backward()
-        train_loss += batch_loss
-        opt.step()
-        n_updates += 1
-        n += 1
+                self.model.eval()
+                rec = self.model(fi)
 
-    writter.add_scalar("train/loss", (train_loss / args.batch_size) / n, epoch)
+                rec[fi > 0] = -1.0
 
+                rec = rec[0]
+                ho = ho[0]
 
-device = (
-    torch.device("cuda")
-    if torch.cuda.is_available() and args.cuda
-    else torch.device("cpu")
-)
+                ndcg += tm.ndcg(rec, ho, 100)
+                recall50 += tm.recall(rec, ho, 50)
+                recall20 += tm.recall(rec, ho, 20)
+                precision5 += tm.precision(rec, ho, 5)
+                precision10 += tm.precision(rec, ho, 10)
+                n += 1
 
-ds = dataset.Dataset(device=device)
-tr = dataset.Trainset("data/folds/1/train.csv", device=device)
-va = dataset.Validset("data/folds/1/valid.csv", device=device)
+        loss /= n
+        recall50 /= n
+        recall20 /= n
+        precision5 /= n
+        precision10 /= n
+        ndcg /= n
 
-train_size = int(0.8 * len(ds))
-valid_size = int((len(ds) - train_size) / 2)
-test_size = len(ds) - train_size - valid_size
+        self.writter.add_scalar("valid/loss", loss, epoch)
+        self.writter.add_scalar(f"valid/recall@{20}", recall20, epoch)
+        self.writter.add_scalar(f"valid/recall@{50}", recall50, epoch)
+        self.writter.add_scalar(f"valid/ndcg@{100}", ndcg, epoch)
+        self.writter.add_scalar(f"valid/precision@{5}", precision5, epoch)
+        self.writter.add_scalar(f"valid/precision@{10}", precision10, epoch)
 
-trainset, validset, testset = random_split(
-    ds, lengths=[train_size, valid_size, test_size], generator=gen
-)
-
-
-train_loader = DataLoader(
-    trainset,
-    batch_size=args.batch_size,
-    # shuffle=True,
-    # generator=torch.Generator(device=device),
-)
-valid_loader = DataLoader(
-    validset,
-    batch_size=1,
-    # shuffle=True,
-    # generator=torch.Generator(device=device),
-)
-test_loader = DataLoader(
-    testset,
-    batch_size=args.batch_size,
-    shuffle=True,
-    # generator=torch.Generator(device=device),
-)
+        return loss
 
 
-vae = VAE(ds.n_items, 200, [600], [600], device=device)
-print(vae.trainable_parameters)
-vae.save("vae/untrainedVAE.pt")
-opt = Adam(
-    vae.parameters(),
-    lr=args.lr,
-)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cuda", action="store_true", help="Should we use cuda")
+    args = parser.parse_args()
 
-decay = lambda init, rate, time: init * ((1 - rate) ** time)
+    device = (
+        torch.device("cuda")
+        if args.cuda and torch.cuda.is_available()
+        else torch.device("cpu")
+    )
+    for i in range(1, 6):
+        trainset = dataset.Trainset(f"data/folds/{i}/train.csv", device)
+        validset = dataset.Testset(f"data/folds/{i}/valid.csv", device)
+        testset = dataset.Testset(f"data/folds/{i}/test.csv", device)
 
-n_updates = 0
+        model = VAE(3416, 200, [600], [600], device)
+        trainer = Trainer(
+            model,
+            trainset,
+            validset,
+            testset,
+            device="cuda",
+            save_path=f"vae/vae{i}.pt",
+        )
 
-writter = SummaryWriter()
-e = evaluation.Evaluator(vae)
-
-
-anneal = 0
-
-best_ndcg = 0
-
-
-for epoch in range(0, args.epochs):
-    n = 0
-    train_loss = 0
-    print(f"Epoch {epoch}\t", flush=True)
-
-    train()
-    current_ndcg = validate()
-
-    if current_ndcg > best_ndcg:
-        torch.save(vae, "vae/vae.pt")
+        trainer.fit()
