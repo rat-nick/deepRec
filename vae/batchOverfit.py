@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, random_split
 from torch.optim import Adam
 
 
-ds = dataset.Dataset("ml-1m")
+ds = dataset.Trainset("ml-1m")
 
 EPOCHS = 1000
 

@@ -3,6 +3,7 @@ from surprise import Dataset as sDataset, Reader
 from torch import Tensor
 from torch.utils.data import Dataset as tDataset
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 
 
@@ -65,9 +66,7 @@ class Trainset(tDataset):
 
 
 class Testset(Trainset):
-    def __init__(
-        self, path: str, device=torch.device("cpu"), hold_out_ratio: float = 0.2
-    ):
+    def __init__(self, path: str, device=torch.device("cpu"), ratio: float = 0.2):
         super().__init__(path, device)
 
         self.foldin = torch.zeros_like(self.data)
@@ -77,12 +76,44 @@ class Testset(Trainset):
         for i in range(len(self.data)):
             # find indicies of all ratings
             idx = self.data[i].nonzero()
-            #
-            fi_idx, ho_idx = train_test_split(
-                idx, test_size=hold_out_ratio, random_state=42
-            )
+
+            fi_idx, ho_idx = train_test_split(idx, test_size=ratio, random_state=42)
             self.foldin[i, fi_idx] = self.data[i, fi_idx]
             self.holdout[i, ho_idx] = self.data[i, ho_idx]
+        assert self.foldin.sum() + self.holdout.sum() == self.data.sum()
+
+    def __len__(self):
+        return super().__len__()
+
+    def __getitem__(self, index):
+        return self.foldin[index], self.holdout[index]
+
+
+class LeaveOneOutSet(Trainset):
+    def __init__(
+        self,
+        path: str,
+        device=torch.device("cpu"),
+        rt: float = 3.5,
+    ):
+        super().__init__(path, device)
+
+        self.foldin = torch.clone(self.data)
+        self.holdout = torch.zeros_like(self.data)
+
+        # hold out data
+        for i in range(len(self.data)):
+            # find indicies of all relevant ratings
+            idx = self.data[i] > rt
+            idx = idx.nonzero().flatten()
+            if len(idx) == 0:
+                continue
+            # select one from the relevant to holdout
+            ho_idx = np.random.choice(idx, size=1)
+            self.foldin[i, ho_idx] = 0  # null the value in the foldin set
+            self.holdout[i, ho_idx] = self.data[
+                i, ho_idx
+            ]  # perserve the value in the holdout
 
     def __len__(self):
         return super().__len__()
