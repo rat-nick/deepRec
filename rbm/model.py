@@ -47,13 +47,6 @@ class Model(nn.Module):
             requires_grad=False,
         )
 
-        # inintalize buffers for metrics
-        self.register_buffer("train_rmse", torch.ones(1000) * 10)
-        self.register_buffer("valid_rmse", torch.ones(1000) * 10)
-        self.register_buffer("train_mae", torch.ones(1000) * 10)
-        self.register_buffer("valid_mae", torch.ones(1000) * 10)
-        self.register_buffer("epoch", torch.zeros(1, dtype=torch.int32))
-
         # set the device for the tensors
         self.device = device
 
@@ -173,7 +166,7 @@ class Model(nn.Module):
         # do Gibbs sampling for t steps
         for _ in range(t):
             vk = self.sample_v_given_h(hk)
-            # vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
+            vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
             phk, hk = self.sample_h_given_v(vk)
 
         vk[input.sum(dim=2) == 0] = input[input.sum(dim=2) == 0]
@@ -219,6 +212,9 @@ class Model(nn.Module):
         """
         ph, _ = self.sample_h_given_v(v)
         return self.sample_v_given_h(ph)
+
+    def apply_gradient(self):
+        pass
 
     def next_epoch(self):
         self.get_buffer("epoch")[0] += 1

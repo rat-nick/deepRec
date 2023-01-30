@@ -3,11 +3,13 @@ from typing import Tuple
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
-from data import dataset
+from . import dataset
 from utils.tensors import onehot_to_ratings
-
+from torch.utils.data import DataLoader
 from .model import Model
 from .params import HyperParams
+from utils.tensors import *
+import torchmetrics.functional as tm
 
 
 class Optimizer:
@@ -15,7 +17,8 @@ class Optimizer:
         self,
         params: HyperParams,
         model: Model,
-        dataset: dataset.MyDataset,
+        trainset: dataset.Trainset,
+        validset: dataset.Testset,
         verbose: bool = False,
         lr=1e-3,
         t=1,
@@ -23,82 +26,131 @@ class Optimizer:
         self.params = params
         self.verbose = verbose
         self.model = model
-        self.dataset = dataset
+        self.trainset = trainset
+        self.validset = validset
         self.lr = lr
         self.t = t
+        self.epoch = 0
         self.decay = lambda x: x
-
+        self.train_loader = DataLoader(
+            trainset, batch_size=params.batch_size, shuffle=True
+        )
+        self.valid_loader = DataLoader(validset, batch_size=1)
         self.patience = 0
         self.writter = SummaryWriter()
 
     def fit(self):
         self.patience = 0
-        loading = "-" * 20
-        if self.verbose:
-            print(f"#####\t{loading}\tTRAIN\t\t\t\tVALIDATION")
-            print(f"Epoch\t{loading}\tRMSE\t\tMAE\t\tRMSE\t\tMAE")
-
-        numBatches = len(self.dataset.trainUsers) / self.params.batch_size
-        _5pct = numBatches / 20
-
-        for epoch in range(self.model.current_epoch + 1, self.params.max_epochs + 1):
-
-            if self.verbose:
-                print(epoch, end="\t", flush=True)
+        best = 0
+        for epoch in range(self.epoch, self.params.max_epochs):
 
             rmse = mae = 0
-            current = 0
-            for minibatch in self.dataset.batches(
-                self.dataset.trainData, self.params.batch_size
-            ):
+            n = 0
+
+            # training loop
+            for minibatch in self.train_loader:
+                minibatch = minibatch.to(torch.device("cuda"))
                 _rmse, _mae = self.apply_gradient(minibatch, self.t, self.decay)
                 rmse += _rmse
                 mae += _mae
+                n += 1
 
-                if self.verbose:
-                    current += 1
-                    if current >= _5pct:
-                        print("#", end="", flush=True)
-                        current = 0
+            self.writter.add_scalar("train/rmse", rmse / n, epoch)
+            self.writter.add_scalar("train/mae", mae / n, epoch)
 
-            if self.verbose:
-                print("\t", end="", flush=True)
-                rmse = rmse / numBatches
-                mae = mae / numBatches
-                print(format(rmse, ".6f"), end="\t")
-                print(format(mae, ".6f"), end="\t")
+            # self.valid_loader.batch_size = len(self.valid_loader)
+            for fi, ho in self.valid_loader:
+                fi += ho
+                fi = fi.to(torch.device("cuda"))
+                _rmse, _mae = self.batch_error(fi)
+                rmse += _rmse
+                mae += _mae
+                n += 1
 
-            self.model.get_buffer("train_rmse")[self.model.current_epoch] = rmse
-            self.model.get_buffer("train_mae")[self.model.current_epoch] = mae
-
-            rmse, mae = self.calculate_errors("validation")
+            rmse /= n
+            mae /= n
 
             self.writter.add_scalar("Validation/RMSE", rmse, epoch)
             self.writter.add_scalar("Validation/MAE", mae, epoch)
-            self.writter.add_histogram("Params/W", self.model.w, epoch)
-            self.writter.add_histogram("Params/vB", self.model.vB, epoch)
-            self.writter.add_histogram("Params/hB", self.model.hB, epoch)
 
-            self.model.get_buffer("valid_rmse")[self.model.current_epoch] = rmse
-            self.model.get_buffer("valid_mae")[self.model.current_epoch] = mae
-
-            if self.verbose:
-                print(format(rmse, ".6f"), end="\t")
-                print(format(mae, ".6f"), end="\t")
-                print()
-
-            if (
-                self.model.current_epoch < 1
-                or self.model.latestRMSE == self.model.bestRMSE
-            ):
-                self.model.save()
-
-            if self.params.early_stopping and self.should_stop():
-                self.model.next_epoch()
-                return
+            # self.writter.add_histogram("Params/W", self.model.w, epoch)
+            # self.writter.add_histogram("Params/vB", self.model.vB, epoch)
+            # self.writter.add_histogram("Params/hB", self.model.hB, epoch)
 
             self.writter.flush()
-            self.model.next_epoch()
+
+            # perform validation
+
+            n100 = 0
+            r50 = 0
+            r20 = 0
+            p10 = 0
+            p5 = 0
+            h10 = 0
+            h5 = 0
+            h1 = 0
+            # self.valid_loader.batch_size = 1
+            for fi, ho in self.valid_loader:
+                fi = fi.to(torch.device("cuda"))
+                ho = ho.to(torch.device("cuda"))
+
+                idx = fi[0].any(1).nonzero()[:, 0]
+
+                rec = self.model.reconstruct(fi)
+                rec[0][idx] = torch.zeros(5, device="cuda")
+                rec = onehot_to_ranking(rec)
+                ho = onehot_to_ratings(ho)
+
+                n100 += tm.retrieval_normalized_dcg(rec, ho, k=100)
+                r50 += tm.retrieval_recall(rec, ho > 3.5, k=50)
+                r20 += tm.retrieval_recall(rec, ho > 3.5, k=20)
+                p10 += tm.retrieval_precision(rec, ho > 3.5, k=10)
+                p5 += tm.retrieval_precision(rec, ho > 3.5, k=5)
+                # h10 += tm.retrieval_hit_rate(rec, ho > 3.5, k=10)
+                # h5 += tm.retrieval_hit_rate(rec, ho > 3.5, k=5)
+                # h1 += tm.retrieval_hit_rate(rec, ho > 3.5, k=1)
+
+            n100 /= len(self.valid_loader)
+            r50 /= len(self.valid_loader)
+            r20 /= len(self.valid_loader)
+            p10 /= len(self.valid_loader)
+            p5 /= len(self.valid_loader)
+            # h10 /= len(self.valid_loader)
+            # h5 /= len(self.valid_loader)
+            # h1 /= len(self.valid_loader)
+
+            n100 = n100.item()
+            r50 = r50.item()
+            r20 = r20.item()
+            p10 = p10.item()
+            p5 = p5.item()
+            # h10 = h10.item()
+            # h5 = h5.item()
+            # h1 = h1.item()
+
+            print(n100, r50, r20, p10, p5)
+            self.writter.add_scalar("valid/ndcg100", n100, epoch)
+            self.writter.add_scalar("valid/r50", r50, epoch)
+            self.writter.add_scalar("valid/r20", r20, epoch)
+            self.writter.add_scalar("valid/p10", p10, epoch)
+            self.writter.add_scalar("valid/p5", p5, epoch)
+            # self.writter.add_scalar("valid/h10", h10, epoch)
+            # self.writter.add_scalar("valid/h5", h5, epoch)
+            # self.writter.add_scalar("valid/h1", h1, epoch)
+
+            if n100 > best:
+                best = n100
+                self.model.save()
+                self.patience = 0
+            else:
+                self.patience += 1
+
+            if self.patience > self.params.patience:
+                print(f"Early stopping after {epoch} epochs")
+                self.epoch = epoch
+                return
+
+        self.epoch = epoch
 
     def calculate_errors(self, s):
         rmse = 0
@@ -106,13 +158,13 @@ class Optimizer:
         n = 0
 
         if s == "validation":
-            data = self.dataset.validationData
+            data = self.trainset.validationData
         elif s == "test":
-            data = self.dataset.testData
+            data = self.trainset.testData
         else:
-            data = self.dataset.trainData
+            data = self.trainset.trainData
 
-        for v in self.dataset.batches(data, self.params.batch_size):
+        for v in self.trainset.batches(data, self.params.batch_size):
             _rmse, _mae = self.batch_error(v)
             mae += _mae
             rmse += _rmse
