@@ -45,3 +45,7 @@ print(df[0].value_counts().min())
 print(df[1].value_counts().min())
 
 df.to_csv(args.path, sep=",", header=False, index=False)
+
+
+def remove_users(df: pd.DataFrame, threshold: int = 20) -> pd.DataFrame:
+    return df.groupby(0).filter(lambda x: len(x) >= threshold)

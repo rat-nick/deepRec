@@ -20,15 +20,18 @@ class Optimizer:
         trainset: dataset.Trainset,
         validset: dataset.Testset,
         verbose: bool = False,
-        lr=1e-3,
         t=1,
+        momentum=0,
+        l1=0,
+        l2=0,
+        sparsity=0,
     ):
         self.params = params
         self.verbose = verbose
         self.model = model
         self.trainset = trainset
         self.validset = validset
-        self.lr = lr
+        self.lr = params.lr
         self.t = t
         self.epoch = 0
         self.decay = lambda x: x
@@ -39,6 +42,16 @@ class Optimizer:
         self.patience = 0
         self.writter = SummaryWriter()
 
+        self.momentum = momentum
+        self.l1 = l1
+        self.l2 = l2
+        self.sparsity = sparsity
+
+        self.prev_wd = torch.zeros_like(self.model.w)
+        self.prev_hd = torch.zeros_like(self.model.hB)
+        self.prev_vd = torch.zeros_like(self.model.vB)
+        self.q_prev = torch.zeros_like(self.model.hB)
+
     def fit(self):
         self.patience = 0
         best = 0
@@ -46,7 +59,7 @@ class Optimizer:
 
             rmse = mae = 0
             n = 0
-
+            self.model.train()
             # training loop
             for minibatch in self.train_loader:
                 minibatch = minibatch.to(torch.device("cuda"))
@@ -58,6 +71,7 @@ class Optimizer:
             self.writter.add_scalar("train/rmse", rmse / n, epoch)
             self.writter.add_scalar("train/mae", mae / n, epoch)
 
+            self.model.eval()
             # self.valid_loader.batch_size = len(self.valid_loader)
             for fi, ho in self.valid_loader:
                 fi += ho
@@ -84,8 +98,10 @@ class Optimizer:
             n100 = 0
             r50 = 0
             r20 = 0
+            r10 = 0
+            p50 = 0
+            p20 = 0
             p10 = 0
-            p5 = 0
             h10 = 0
             h5 = 0
             h1 = 0
@@ -97,15 +113,17 @@ class Optimizer:
                 idx = fi[0].any(1).nonzero()[:, 0]
 
                 rec = self.model.reconstruct(fi)
-                rec[0][idx] = torch.zeros(5, device="cuda")
-                rec = onehot_to_ranking(rec)
-                ho = onehot_to_ratings(ho)
+                rec = onehot_to_ranking(rec)[0]
+                rec[idx] = 0
+                ho = onehot_to_ratings(ho)[0]
 
                 n100 += tm.retrieval_normalized_dcg(rec, ho, k=100)
                 r50 += tm.retrieval_recall(rec, ho > 3.5, k=50)
                 r20 += tm.retrieval_recall(rec, ho > 3.5, k=20)
+                r10 += tm.retrieval_recall(rec, ho > 3.5, k=10)
+                p50 += tm.retrieval_precision(rec, ho > 3.5, k=50)
+                p20 += tm.retrieval_precision(rec, ho > 3.5, k=20)
                 p10 += tm.retrieval_precision(rec, ho > 3.5, k=10)
-                p5 += tm.retrieval_precision(rec, ho > 3.5, k=5)
                 # h10 += tm.retrieval_hit_rate(rec, ho > 3.5, k=10)
                 # h5 += tm.retrieval_hit_rate(rec, ho > 3.5, k=5)
                 # h1 += tm.retrieval_hit_rate(rec, ho > 3.5, k=1)
@@ -113,8 +131,10 @@ class Optimizer:
             n100 /= len(self.valid_loader)
             r50 /= len(self.valid_loader)
             r20 /= len(self.valid_loader)
+            r10 /= len(self.valid_loader)
+            p50 /= len(self.valid_loader)
+            p20 /= len(self.valid_loader)
             p10 /= len(self.valid_loader)
-            p5 /= len(self.valid_loader)
             # h10 /= len(self.valid_loader)
             # h5 /= len(self.valid_loader)
             # h1 /= len(self.valid_loader)
@@ -122,18 +142,22 @@ class Optimizer:
             n100 = n100.item()
             r50 = r50.item()
             r20 = r20.item()
+            r10 = r10.item()
+            p50 = p50.item()
+            p20 = p20.item()
             p10 = p10.item()
-            p5 = p5.item()
             # h10 = h10.item()
             # h5 = h5.item()
             # h1 = h1.item()
 
-            print(n100, r50, r20, p10, p5)
+            print(n100, r50, r20, p50, p20)
             self.writter.add_scalar("valid/ndcg100", n100, epoch)
             self.writter.add_scalar("valid/r50", r50, epoch)
             self.writter.add_scalar("valid/r20", r20, epoch)
+            self.writter.add_scalar("valid/r10", r10, epoch)
+            self.writter.add_scalar("valid/p50", p50, epoch)
+            self.writter.add_scalar("valid/p20", p20, epoch)
             self.writter.add_scalar("valid/p10", p10, epoch)
-            self.writter.add_scalar("valid/p5", p5, epoch)
             # self.writter.add_scalar("valid/h10", h10, epoch)
             # self.writter.add_scalar("valid/h5", h5, epoch)
             # self.writter.add_scalar("valid/h1", h1, epoch)
@@ -228,13 +252,13 @@ class Optimizer:
         """
 
         activations = torch.zeros_like(self.model.hB, device=self.model.device)
-        v0 = minibatch
+        vpos = minibatch
 
-        v0, ph0, vt, pht = self.model.gibbs_sample(v0, t)
-        activations = ph0.sum(dim=0) / len(minibatch)
+        vpos, phpos, vneg, phneg = self.model.gibbs_sample(vpos, t)
+        activations = phpos.sum(dim=0) / len(minibatch)
 
-        hb_delta = (ph0 - pht).sum(dim=0) / len(minibatch)
-        vb_delta = (v0 - vt).sum(dim=0) / len(minibatch)
+        hb_delta = (phpos - phneg).sum(dim=0) / len(minibatch)
+        vb_delta = (vpos - vneg).sum(dim=0) / len(minibatch)
 
         w_delta = torch.matmul(vb_delta.unsqueeze(2), hb_delta.unsqueeze(0))
 
@@ -247,34 +271,33 @@ class Optimizer:
         self.model.w += w_delta * self.alpha
 
         # apply momentum if applicable
-        # if self.momentum > 0.0 and hasattr(self, "prev_w_delta"):
-        #     self.params.v += self.trainingParams.prev_vd * self.hyperParams.momentum
-        #     self.params.h += self.trainingParams.prev_hd * self.hyperParams.momentum
-        #     self.params.w += self.trainingParams.prev_wd * self.hyperParams.momentum
+        if self.momentum > 0.0:
+            self.model.vB += self.prev_vd * self.momentum
+            self.model.hB += self.prev_hd * self.momentum
+            self.model.w += self.prev_wd * self.momentum
 
         # remember the deltas for next training step when using momentum
-        # self.prev_w_delta = w_delta
-        # self.prev_hb_delta = hb_delta
-        # self.prev_vb_delta = vb_delta
+        self.prev_wd = w_delta
+        self.prev_hd = hb_delta
+        self.prev_vd = vb_delta
 
         # # calculate the regularization terms
-        # reg_w = self.w * self.l2
-        # # reg_h = hb_delta * self.l1
+        reg_w = self.model.w * self.l2
 
         # # apply regularization
-        # self.w -= reg_w  # * len(minibatch)
-        # if self.l1 > 0:
-        #     q_new = (activations / len(minibatch)) * (
-        #         1 - self.l1
-        #     ) + self.l1 * self.q_prev
-        #     sparsity_penalty = (
-        #         -self.sparsity * torch.log(q_new)
-        #         - (1 - self.sparsity)
-        #         - torch.log(1 - q_new)
-        #     )
-        #     self.h -= sparsity_penalty
-        #     self.w += torch.ones_like(self.w) * sparsity_penalty
-        #     self.q_prev = q_new
+        self.model.w -= reg_w  # * len(minibatch)
+        if self.l1 > 0:
+            q_new = (activations / len(minibatch)) * (
+                1 - self.l1
+            ) + self.l1 * self.q_prev
+            sparsity_penalty = (
+                -self.sparsity * torch.log(q_new)
+                - (1 - self.sparsity)
+                - torch.log(1 - q_new)
+            )
+            self.model.hB -= sparsity_penalty
+            self.model.w += torch.ones_like(self.model.w) * sparsity_penalty
+            self.q_prev = q_new
 
         rmse, mae = self.batch_error(minibatch)
 

@@ -13,7 +13,11 @@ def hold_out_ratings(ratings: pd.DataFrame, ratio: float = 0.2):
     return ratings, held_out
 
 
-def split_folds(folds: int = 5, data_dir: str = "data/folds", df: pd.DataFrame = None):
+def split_folds(
+    folds: int = 5,
+    data_dir: str = "data/folds",
+    df: pd.DataFrame = None,
+):
     users = df["user"].unique()
 
     kf = KFold(n_splits=folds, shuffle=True, random_state=42)

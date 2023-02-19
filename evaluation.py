@@ -37,7 +37,7 @@ class Evaluator:
     def splitRatings(self, tensor, ratio=0.8):
         idx = tensor.nonzero().cpu()
         # split indicies in 80:20 ratio
-        t_idx, v_idx = ms.train_test_split(idx, train_size=ratio)
+        t_idx, v_idx = ms.train_test_split(idx, train_size=ratio, random_state=42)
 
         t_mask = torch.zeros_like(tensor)
         t_mask[t_idx] = 1

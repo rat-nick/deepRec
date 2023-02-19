@@ -12,6 +12,8 @@ from . import dataset
 from .model import Model as VAE
 from .optimizer import elbo
 
+PATIENCE = 10
+
 
 class Trainer:
     def __init__(
@@ -54,6 +56,7 @@ class Trainer:
 
         self.writter = SummaryWriter()
         self.save_path = save_path
+        self.patience = 0
 
     def fit(self):
         self.opt = Adam(self.model.parameters(), lr=self.lr)
@@ -66,7 +69,14 @@ class Trainer:
             current_ndcg = self.test_top_n(epoch, self.validset)
             self.test_loo(epoch, self.loovalidset)
             if current_ndcg > best_ndcg:
-                self.model.save()
+                self.model.save(self.save_path)
+                best_ndcg = current_ndcg
+                self.patience = 0
+            else:
+                self.patience += 1
+
+            if self.patience > PATIENCE:
+                return
 
     def train(self):
         self.model.train()
@@ -96,10 +106,12 @@ class Trainer:
         loader = DataLoader(testset, batch_size=1)
 
         loss = 0
-        recall50 = 0
-        recall20 = 0
-        precision5 = 0
-        precision10 = 0
+        r50 = 0
+        r20 = 0
+        r10 = 0
+        p50 = 0
+        p20 = 0
+        p10 = 0
         hr5 = 0
         hr10 = 0
         ndcg = 0
@@ -126,31 +138,37 @@ class Trainer:
                 ho = ho[0]
 
                 ndcg += tm.ndcg(rec, ho, 100)
-                recall50 += tm.recall(rec, ho, 50)
-                recall20 += tm.recall(rec, ho, 20)
-                precision5 += tm.precision(rec, ho, 5)
-                precision10 += tm.precision(rec, ho, 10)
+                r50 += tm.recall(rec, ho, 50)
+                r20 += tm.recall(rec, ho, 20)
+                r10 += tm.recall(rec, ho, 10)
+                p50 += tm.precision(rec, ho, 50)
+                p20 += tm.precision(rec, ho, 20)
+                p10 += tm.precision(rec, ho, 10)
 
                 n += 1
 
         loss /= n
-        recall50 /= n
-        recall20 /= n
-        precision5 /= n
-        precision10 /= n
+        r50 /= n
+        r20 /= n
+        r10 /= n
+        p50 /= n
+        p20 /= n
+        p10 /= n
         ndcg /= n
 
         if benchmarking:
-            return ndcg, precision10, precision5, recall50, recall20
+            return ndcg, r50, r20, r10, p50, p20, p10
 
         self.writter.add_scalar("valid/loss", loss, epoch)
-        self.writter.add_scalar(f"valid/recall@{20}", recall20, epoch)
-        self.writter.add_scalar(f"valid/recall@{50}", recall50, epoch)
-        self.writter.add_scalar(f"valid/ndcg@{100}", ndcg, epoch)
-        self.writter.add_scalar(f"valid/precision@{5}", precision5, epoch)
-        self.writter.add_scalar(f"valid/precision@{10}", precision10, epoch)
+        self.writter.add_scalar(f"valid/ndcg{100}", ndcg, epoch)
+        self.writter.add_scalar(f"valid/r{50}", r50, epoch)
+        self.writter.add_scalar(f"valid/r{20}", r20, epoch)
+        self.writter.add_scalar(f"valid/r{10}", r10, epoch)
+        self.writter.add_scalar(f"valid/p{50}", p50, epoch)
+        self.writter.add_scalar(f"valid/p{20}", p20, epoch)
+        self.writter.add_scalar(f"valid/p{10}", p10, epoch)
 
-        return loss
+        return ndcg
 
     def test_loo(
         self, epoch, testset: dataset.LeaveOneOutSet, benchmarking: bool = False
@@ -190,10 +208,10 @@ class Trainer:
 
         if benchmarking:
             return hr1, hr5, hr10, arhr20
-        self.writter.add_scalar(f"valid/hr@1", hr1, epoch)
-        self.writter.add_scalar(f"valid/hr@5", hr5, epoch)
-        self.writter.add_scalar(f"valid/hr@10", hr10, epoch)
-        self.writter.add_scalar(f"valid/arhr@20", arhr20, epoch)
+        self.writter.add_scalar(f"valid/hr1", hr1, epoch)
+        self.writter.add_scalar(f"valid/hr5", hr5, epoch)
+        self.writter.add_scalar(f"valid/hr10", hr10, epoch)
+        self.writter.add_scalar(f"valid/arhr", arhr20, epoch)
 
 
 if __name__ == "__main__":
@@ -209,13 +227,15 @@ if __name__ == "__main__":
 
     r50_list = []
     r20_list = []
+    r10_list = []
+    p50_list = []
+    p20_list = []
     p10_list = []
-    p5_list = []
     n100_list = []
     hr1_list = []
     hr5_list = []
     hr10_list = []
-    arhr20_list = []
+    arhr_list = []
 
     for i in range(1, 6):
         trainset = dataset.Trainset(f"data/folds/{i}/train.csv", device)
@@ -232,23 +252,27 @@ if __name__ == "__main__":
             testset,
             loovalidset,
             lootestset,
+            epochs=200,
             device="cuda",
             save_path=f"vae/vae{i}.pt",
         )
 
         trainer.fit()
-        n100, p10, p5, r50, r20 = trainer.test_top_n(0, testset, True)
-        hr1, hr5, hr10, arhr20 = trainer.test_loo(0, testset, True)
+        trainer.model.load(f"vae/vae{i}.pt")
+        n100, r50, r20, r10, p50, p20, p10 = trainer.test_top_n(0, testset, True)
+        hr1, hr5, hr10, arhr = trainer.test_loo(0, lootestset, True)
 
         n100_list += [n100.cpu().numpy()]
         r50_list += [r50.cpu().numpy()]
         r20_list += [r20.cpu().numpy()]
+        r10_list += [r10.cpu().numpy()]
+        p50_list += [p50.cpu().numpy()]
+        p20_list += [p20.cpu().numpy()]
         p10_list += [p10.cpu().numpy()]
-        p5_list += [p5.cpu().numpy()]
         hr1_list += [hr1.cpu().numpy()]
         hr5_list += [hr5.cpu().numpy()]
         hr10_list += [hr10.cpu().numpy()]
-        arhr20_list += [arhr20.cpu().numpy()]
+        arhr_list += [arhr.cpu().numpy()]
 
         print(
             tabulate(
@@ -258,37 +282,43 @@ if __name__ == "__main__":
                         np.mean(n100_list),
                         np.mean(r50_list),
                         np.mean(r20_list),
+                        np.mean(r10_list),
+                        np.mean(p50_list),
+                        np.mean(p20_list),
                         np.mean(p10_list),
-                        np.mean(p5_list),
-                        np.mean(arhr20_list),
                         np.mean(hr10_list),
                         np.mean(hr5_list),
                         np.mean(hr1_list),
+                        np.mean(arhr_list),
                     ],
                     [
                         "std",
                         np.std(n100_list),
                         np.std(r50_list),
                         np.std(r20_list),
+                        np.std(r10_list),
+                        np.std(p50_list),
+                        np.std(p20_list),
                         np.std(p10_list),
-                        np.std(p5_list),
-                        np.std(arhr20_list),
                         np.std(hr10_list),
                         np.std(hr5_list),
                         np.std(hr1_list),
+                        np.std(arhr_list),
                     ],
                 ],
                 headers=[
                     "",
                     "ndcg@100",
-                    "recall@50",
-                    "recall@20",
-                    "precision@10",
-                    "precision5",
-                    "arhr@20",
-                    "hitrate@10",
-                    "hitrate@5",
-                    "hitrate@1",
+                    "r@50",
+                    "r@20",
+                    "r@10",
+                    "p@50",
+                    "p@20",
+                    "p@10",
+                    "hr@10",
+                    "hr@5",
+                    "hr@1",
+                    "arhr",
                 ],
             )
         )
