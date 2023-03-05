@@ -36,8 +36,8 @@ print(f"There are {unique_items()} unique items in the dataset")
 
 
 print("Performing dataset cleaning...")
-df = df.groupby(0).filter(lambda x: len(x) >= args.userThreshold)
 df = df.groupby(1).filter(lambda x: len(x) >= args.itemThreshold)
+df = df.groupby(0).filter(lambda x: len(x) >= args.userThreshold)
 print("Completed!")
 print(f"There are {unique_users()} unique users in the dataset")
 print(f"There are {unique_items()} unique items in the dataset")

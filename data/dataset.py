@@ -1,212 +1,92 @@
-import time
-from dataclasses import dataclass
-from pathlib import Path
-from random import shuffle
-
+import surprise
+from sklearn.model_selection import KFold
+from collections import defaultdict
 import pandas as pd
-import torch
-from sklearn.model_selection import train_test_split
-from surprise import Dataset, Reader
 
-DATA_DIR = Path(__file__).parent / "ml-20m"
-RATINGS_FILE = "ratings.csv"
-ITEMS_FILE = "movies.csv"
-LINKS_FILE = "links.csv"
+diff = lambda x, y: pd.concat([x, y, y]).drop_duplicates(keep=False)
 
 
-@dataclass
-class DataLoadingParams:
-    ratings_path: str
-    ratings_sep: str
-    items_path: str
-    items_sep: str
-
-
-DATASETS_DICT = {
-    "ml-100k": DataLoadingParams(
-        "u.data",
-        "\t",
-        "u.item",
-        "|",
-    ),
-    "ml-1m": DataLoadingParams(
-        "ratings.dat",
-        "::",
-        "movies.dat",
-        "::",
-    ),
-}
-
-
-class MyDataset:
-    def __init__(self, dataset="ml-100k", device="cuda"):
-
-        loading_params = DATASETS_DICT[dataset]
-        data_dir = Path(__file__).parent / dataset
-        if torch.cuda.is_available() and device == "cuda":
-            print("CUDA available! Setting default tensor type to cuda.FloatTensor")
-            torch.set_default_tensor_type(torch.cuda.FloatTensor)
-
-        try:
-            self.rawRatingsDF = pd.read_csv(
-                f"{data_dir}/{loading_params.ratings_path}",
-                sep=loading_params.ratings_sep,
-                header=0,
-                engine="python",
-                encoding="latin-1",
-            )
-        except FileNotFoundError:
-            print("The ratings file doesn't exist!")
-
-        try:
-            self.itemsDF = pd.read_csv(
-                f"{data_dir}/{loading_params.items_path}",
-                sep=loading_params.items_sep,
-                header=0,
-                engine="python",
-                encoding="latin-1",
-            )
-        except FileNotFoundError:
-            print("The items file doesn't exist!")
-
-        try:
-            linksDF = pd.read_csv(
-                f"{data_dir}/{links_path}",
-                sep=links_sep,
-                header=0,
-                engine="python",
-                encoding="latin-1",
-            )
-
-            linksDF = linksDF.fillna(0)
-            linksDF["tmdbId"] = linksDF["tmdbId"].astype("int")
-
-            self.itemsDF = pd.concat([self.itemsDF, linksDF], axis=1, join="inner")
-            self.itemsDF = self.itemsDF.loc[:, ~self.itemsDF.T.duplicated(keep="first")]
-
-        except FileNotFoundError:
-            print("The links file doesn't exist!")
-        except NameError:
-            print("The links parameter aren't initialized!")
-
-        self.rawRatingsDF.columns = ["user", "item", "rating", "timestamp"]
-        self.rawRatingsDF["rating"] *= 1
-        self.rawRatingsDF = self.rawRatingsDF.rename(
-            columns={"userId": "user", "movieId": "item"}
-        )
-        try:
-            self.rawRatingsDF.drop("timestamp", inplace=True, axis=1)
-        except:
-            print("No timestamp...")
-        self.ratingsDS = Dataset.load_from_df(
-            df=self.rawRatingsDF,
-            reader=Reader(
-                # line_format="user item rating timestamp",
-                rating_scale=(1, 10),
-            ),
+class Dataset:
+    def __init__(self, path: str = None, sep: str = ",", user_threshold: int = 20):
+        df = pd.read_csv(path, sep=sep, engine="python", encoding="latin-1")
+        df = df.groupby("user").filter(lambda x: len(x) >= user_threshold)
+        df = df.iloc[:, :3]
+        self.dataset = surprise.Dataset.load_from_df(
+            df, surprise.Reader(line_format="user item rating")
         )
 
-        self.trainset = self.ratingsDS.build_full_trainset()
+        self.trainset = self.dataset.build_full_trainset()
 
-        self.inner2RawUser = self.trainset.to_raw_uid
-        self.inner2RawItem = self.trainset.to_raw_iid
-        self.raw2InnerUser = self.trainset.to_inner_uid
-        self.raw2InnerItem = self.trainset.to_inner_iid
+    def all_users(self):
+        return self.trainset.all_users()
 
-        self.nItems = self.trainset.n_items
-        self.nUsers = self.trainset.n_users
+    def all_ratings(self):
+        return self.trainset.all_ratings()
 
-        self.allUsers = [u for u in self.trainset.all_users()]
-        self.allItems = [i for i in self.trainset.all_items()]
+    def all_items(self):
+        return self.trainset.all_items()
 
-        self.convertRatings2InnerIDs()
+    @property
+    def n_items(self):
+        return self.trainset.n_items
 
-    def trainTestValidationSplit(self):
-        self.trainUsers, self.testUsers = train_test_split(self.allUsers, test_size=0.2)
-        self.validationUsers, self.testUsers = train_test_split(
-            self.testUsers, test_size=0.5
-        )
+    @property
+    def n_users(self):
+        return self.trainset.n_users
 
-        toRawUser = self.trainset.to_raw_uid
+    @property
+    def n_ratings(self):
+        return self.trainset.n_ratings
 
-        self.trainData = self.innerRatingsDF[
-            self.innerRatingsDF["user"].isin(self.trainUsers)
-        ]
-        self.validationData = self.innerRatingsDF[
-            self.innerRatingsDF["user"].isin(self.validationUsers)
-        ]
-        self.testData = self.innerRatingsDF[
-            self.innerRatingsDF["user"].isin(self.testUsers)
-        ]
+    def userKFold(self, n_splits: int = 5):
+        kf = KFold(n_splits, shuffle=True, random_state=42)
+        users = [u for u in self.all_users()]
 
-    def convertRatings2InnerIDs(self):
-        self.innerRatingsDF = pd.concat(
-            [
-                self.rawRatingsDF["user"].apply(
-                    lambda x: self.trainset.to_inner_uid(x)
-                ),
-                self.rawRatingsDF["item"].apply(
-                    lambda x: self.trainset.to_inner_iid(x)
-                ),
-                self.rawRatingsDF["rating"],
-            ],
-            axis=1,
-        )
-        self.innerRatingsDF = pd.DataFrame(
-            self.innerRatingsDF, columns=["user", "item", "rating"]
-        )
+        for trainset, testset in kf.split(users):
+            train_data = list()
+            test_data = list()
 
-    def batches(self, data: pd.DataFrame, batch_size: int):
-        batcher = Batcher(data, batch_size, (self.nItems, 5))
-        return batcher.next()
+            for key in trainset:
+                for i, r in self.trainset.ur[key]:
+                    train_data += [(key, i, r)]
 
-    def getRawUserRatings(self, uid):
-        return self.rawRatingsDF.loc[self.rawRatingsDF["user"] == uid]
+            for key in testset:
+                for i, r in self.trainset.ur[key]:
+                    test_data += [(key, i, r)]
 
-    def getInnerUserRatings(self, uid):
-        return self.innerRatingsDF.loc[self.innerRatingsDF["user"] == uid]
+            yield train_data, test_data
 
+    def fihoUserKFold(self, n_splits: int = 5, ho_ratio: float = 0.2):
 
-class Batcher:
-    def __init__(
-        self,
-        df: pd.DataFrame,
-        batch_size: int,
-        size: tuple,
-    ):
-        self.df = df
-        self.bs = batch_size
-        self.size = size
+        for train_data, test_data in self.userKFold(n_splits):
+            train = pd.DataFrame(train_data, columns=["user", "item", "rating"])
+            test = pd.DataFrame(test_data, columns=["user", "item", "rating"])
 
-    def next(self):
-        users = self.df["user"].unique()
-        shuffle(users)
+            ho = test.groupby("user").sample(frac=ho_ratio, random_state=42)
+            fi = diff(test, ho)
+            train = list(pd.concat([train, fi]).itertuples(index=False))
+            test = list(ho.itertuples(index=False))
+            ds = self.dataset
+            ts = self.trainset
+            train = [(ts.to_raw_uid(u), ts.to_raw_iid(i), r, 0) for u, i, r in train]
+            test = [(ts.to_raw_uid(u), ts.to_raw_iid(i), r) for u, i, r in test]
+            yield ds.construct_trainset(train), test
 
-        # initialize the tensor to be returned
-        t = torch.zeros((self.bs,) + self.size)
+    def looUserKFold(self, n_splits: int = 5):
 
-        current = 0
-        for u in users:
-            start = time.time()
-            ratings = self.df[self.df["user"] == u]
-            t[
-                current,
-                ratings["item"].to_numpy(),
-                ratings["rating"].to_numpy() - 1,
-            ] = 1.0
-            current += 1
-            if current >= self.bs:
-                yield t
-                # print(f"Batching lasted {time.time() - start}")
-                current = 0
+        for train_data, test_data in self.userKFold(n_splits):
+            train = pd.DataFrame(train_data, columns=["user", "item", "rating"])
+            test = pd.DataFrame(test_data, columns=["user", "item", "rating"])
 
-        yield t
-        return
+            left_out = test.groupby("user").sample(n=1, random_state=42)
+            fi = diff(test, left_out)
 
+            train = list(pd.concat([train, fi]).itertuples(index=False))
+            test = list(left_out.itertuples(index=False))
 
-if __name__ == "__main__":
-    dataAccess = MyDataset("ml-1m")
-    dataAccess.trainTestValidationSplit()
-    trainset = dataAccess.trainset
-    for b in dataAccess.batches(dataAccess.trainData, 1024):
-        print(b.shape)
+            ds = self.dataset
+            ts = self.trainset
+            train = [(ts.to_raw_uid(u), ts.to_raw_iid(i), r, 0) for u, i, r in train]
+            test = [(ts.to_raw_uid(u), ts.to_raw_iid(i), r) for u, i, r in test]
+
+            yield ds.construct_trainset(train), test

@@ -19,6 +19,10 @@ def split_folds(
     df: pd.DataFrame = None,
 ):
     users = df["user"].unique()
+    items = df["item"].unique()
+
+    with open(f"{data_dir}/dims", "x") as f:
+        f.write("%d, %d " % (len(users), len(items)))
 
     kf = KFold(n_splits=folds, shuffle=True, random_state=42)
     for i, (train_idx, test_idx) in enumerate(kf.split(users)):
