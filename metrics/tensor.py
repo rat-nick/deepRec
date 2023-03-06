@@ -33,7 +33,7 @@ def hr(preds: torch.Tensor, target: torch.Tensor, k: int = 10):
     return tmf.retrieval_hit_rate(preds, target, k)
 
 
-def mrr(preds: torch.Tensor, target: torch.Tensor, k: int = 10):
+def mrr(preds: torch.Tensor, target: torch.Tensor):
     target = target > 3.5
     preds -= preds.min()
     preds /= preds.max()
