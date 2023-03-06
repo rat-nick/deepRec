@@ -3,6 +3,7 @@ from typing import Tuple
 import random
 import torch
 from sklearn.model_selection import train_test_split
+import torch.nn.functional as F
 
 mae = torch.nn.L1Loss()
 mse = torch.nn.MSELoss()
@@ -84,10 +85,30 @@ def ratings_softmax(v, num_ratings=10):
     return v
 
 
+def ohwmv(x: torch.Tensor) -> torch.Tensor:
+    """One-Hot encoding with missing ratings
+
+    Args:
+        x (torch.Tensor): the input tensor
+
+    Returns:
+        torch.Tensor: returns One-Hot encoded tensor where the missing values are zero vectors
+    """
+    return F.one_hot(x.to(torch.int64), num_classes=6).float()[..., 1:]
+
+
 def split(
     t: torch.Tensor, ratio: float = 0.2, nonzero_only: bool = True
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    idx = t.nonzero()
+
+    all_but_first = lambda x: tuple([t for t in range(1, len(x.shape))])
+    reduce_to_first = lambda x: x.sum(dim=all_but_first(x))
+
+    if len(t.shape) == 1:
+        idx = t.nonzero()
+    else:
+        idx = reduce_to_first(t).nonzero()
+
     train_idx, test_idx = train_test_split(
         idx, test_size=ratio, random_state=42, shuffle=True
     )
@@ -116,13 +137,11 @@ def leave_one_out(
 
 if __name__ == "__main__":
     torch.manual_seed(42)
-    v1 = torch.randint(
-        high=5,
-        size=(20,),
-    ).float()
-
-    tr, ts = split(v1)
-    assert (v1 - tr - ts).sum().item() == 0.0
-    tr, ts = leave_one_out(v1)
-    assert (v1 - tr - ts).sum().item() == 0.0
+    x = torch.randint(0, 6, size=(5, 20))
+    tr, ts = split(x)
+    tr, ts = ohwmv(tr), ohwmv(ts)
+    print(x)
+    assert (x - tr - ts).sum().item() == 0.0
+    tr, ts = leave_one_out(x)
+    assert (x - tr - ts).sum().item() == 0.0
     print(tr, ts, sep="\n")

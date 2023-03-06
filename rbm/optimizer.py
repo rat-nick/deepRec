@@ -1,4 +1,6 @@
+from collections import defaultdict
 import math
+from statistics import mean
 from typing import Tuple
 
 import torch
@@ -17,8 +19,8 @@ class Optimizer:
         self,
         params: HyperParams,
         model: Model,
-        trainset: dataset.Trainset,
-        validset: dataset.Testset,
+        trainset: dataset.Dataset,
+        validset: dataset.Dataset,
         verbose: bool = False,
         t=1,
         momentum=0,
@@ -55,115 +57,16 @@ class Optimizer:
     def fit(self):
         self.patience = 0
         best = 0
+
         for epoch in range(self.epoch, self.params.max_epochs):
+            metrics = defaultdict(list)
+            self.train_loop(epoch)
+            self.reconstruction_validation(metrics, epoch, self.valid_loader, True)
+            ndcg = self.ranking_evaluation(metrics, epoch, self.valid_loader, True)
+            self.leave_one_out_evaluation(metrics, epoch, self.valid_loader, True)
 
-            rmse = mae = 0
-            n = 0
-            self.model.train()
-            # training loop
-            for minibatch in self.train_loader:
-                minibatch = minibatch.to(torch.device("cuda"))
-                _rmse, _mae = self.apply_gradient(minibatch, self.t, self.decay)
-                rmse += _rmse
-                mae += _mae
-                n += 1
-
-            self.writter.add_scalar("train/rmse", rmse / n, epoch)
-            self.writter.add_scalar("train/mae", mae / n, epoch)
-
-            self.model.eval()
-            # self.valid_loader.batch_size = len(self.valid_loader)
-            for fi, ho in self.valid_loader:
-                fi += ho
-                fi = fi.to(torch.device("cuda"))
-                _rmse, _mae = self.batch_error(fi)
-                rmse += _rmse
-                mae += _mae
-                n += 1
-
-            rmse /= n
-            mae /= n
-
-            self.writter.add_scalar("Validation/RMSE", rmse, epoch)
-            self.writter.add_scalar("Validation/MAE", mae, epoch)
-
-            # self.writter.add_histogram("Params/W", self.model.w, epoch)
-            # self.writter.add_histogram("Params/vB", self.model.vB, epoch)
-            # self.writter.add_histogram("Params/hB", self.model.hB, epoch)
-
-            self.writter.flush()
-
-            # perform validation
-
-            n100 = 0
-            r50 = 0
-            r20 = 0
-            r10 = 0
-            p50 = 0
-            p20 = 0
-            p10 = 0
-            h10 = 0
-            h5 = 0
-            h1 = 0
-            # self.valid_loader.batch_size = 1
-            for fi, ho in self.valid_loader:
-                fi = fi.to(torch.device("cuda"))
-                ho = ho.to(torch.device("cuda"))
-
-                idx = fi[0].any(1).nonzero()[:, 0]
-
-                rec = self.model.reconstruct(fi)
-                rec = onehot_to_ranking(rec)[0]
-                rec[idx] = 0
-                ho = onehot_to_ratings(ho)[0]
-
-                n100 += tm.retrieval_normalized_dcg(rec, ho, k=100)
-                r50 += tm.retrieval_recall(rec, ho > 3.5, k=50)
-                r20 += tm.retrieval_recall(rec, ho > 3.5, k=20)
-                r10 += tm.retrieval_recall(rec, ho > 3.5, k=10)
-                p50 += tm.retrieval_precision(rec, ho > 3.5, k=50)
-                p20 += tm.retrieval_precision(rec, ho > 3.5, k=20)
-                p10 += tm.retrieval_precision(rec, ho > 3.5, k=10)
-                # h10 += tm.retrieval_hit_rate(rec, ho > 3.5, k=10)
-                # h5 += tm.retrieval_hit_rate(rec, ho > 3.5, k=5)
-                # h1 += tm.retrieval_hit_rate(rec, ho > 3.5, k=1)
-
-            n100 /= len(self.valid_loader)
-            r50 /= len(self.valid_loader)
-            r20 /= len(self.valid_loader)
-            r10 /= len(self.valid_loader)
-            p50 /= len(self.valid_loader)
-            p20 /= len(self.valid_loader)
-            p10 /= len(self.valid_loader)
-            # h10 /= len(self.valid_loader)
-            # h5 /= len(self.valid_loader)
-            # h1 /= len(self.valid_loader)
-
-            n100 = n100.item()
-            r50 = r50.item()
-            r20 = r20.item()
-            r10 = r10.item()
-            p50 = p50.item()
-            p20 = p20.item()
-            p10 = p10.item()
-            # h10 = h10.item()
-            # h5 = h5.item()
-            # h1 = h1.item()
-
-            print(n100, r50, r20, p50, p20)
-            self.writter.add_scalar("valid/ndcg100", n100, epoch)
-            self.writter.add_scalar("valid/r50", r50, epoch)
-            self.writter.add_scalar("valid/r20", r20, epoch)
-            self.writter.add_scalar("valid/r10", r10, epoch)
-            self.writter.add_scalar("valid/p50", p50, epoch)
-            self.writter.add_scalar("valid/p20", p20, epoch)
-            self.writter.add_scalar("valid/p10", p10, epoch)
-            # self.writter.add_scalar("valid/h10", h10, epoch)
-            # self.writter.add_scalar("valid/h5", h5, epoch)
-            # self.writter.add_scalar("valid/h1", h1, epoch)
-
-            if n100 > best:
-                best = n100
+            if ndcg > best:
+                best = ndcg
                 self.model.save()
                 self.patience = 0
             else:
@@ -175,6 +78,87 @@ class Optimizer:
                 return
 
         self.epoch = epoch
+
+    def leave_one_out_evaluation(self, metrics, epoch, loader, log=False):
+        self.model.eval()
+        for case in loader:
+            case = case[0].to(torch.device("cuda"))
+            fi, ho = leave_one_out(case, threshold=3.5)
+            if fi == None:
+                continue
+            fi = ohwmv(fi).unsqueeze(0)
+
+            rec = self.model(fi)
+            rec = onehot_to_ranking(rec)[0]
+            fi = onehot_to_ratings(fi)[0]
+            rec[fi > 0] = 0
+            ks = [1, 5, 10, 20]
+
+            metrics["arhr"] += [tm.retrieval_reciprocal_rank(rec, ho > 3.5).item()]
+            for k in ks:
+                metrics[f"hr@{k}"] += [tm.retrieval_hit_rate(rec, ho > 3.5, k).item()]
+        if log:
+            for key in metrics:
+                self.writter.add_scalar(f"valid/{key}", mean(metrics[key]), epoch)
+
+    def ranking_evaluation(self, metrics, epoch, loader, log=False):
+        self.model.eval()
+        l = len(metrics["ndcg@100"])
+        for case in loader:
+            case = case[0].to(torch.device("cuda"))
+            fi, ho = split(case)
+            fi = ohwmv(fi).unsqueeze(0)
+
+            rec = self.model(fi)
+            rec = onehot_to_ranking(rec)[0]
+            fi = onehot_to_ratings(fi)
+            rec[fi[0] > 0] = 0
+            ks = [10, 20, 50, 100]
+            metrics["ndcg@10"] += [tm.retrieval_normalized_dcg(rec, ho, 10).item()]
+            metrics["ndcg@100"] += [tm.retrieval_normalized_dcg(rec, ho, 100).item()]
+
+            for k in ks:
+                metrics[f"recall@{k}"] += [tm.retrieval_recall(rec, ho > 0, k).item()]
+                metrics[f"precision@{k}"] += [
+                    tm.retrieval_precision(rec, ho > 0, k).item()
+                ]
+        if log:
+            for key in metrics:
+                self.writter.add_scalar(f"valid/{key}", mean(metrics[key]), epoch)
+
+        return mean(metrics["ndcg@100"][l:])
+
+    def reconstruction_validation(self, metrics, epoch, loader, log=False):
+        self.model.eval()
+
+        # RMSE/MAE validation loop
+        for case in loader:
+            case = case.to(torch.device("cuda"))
+            case = ohwmv(case)
+            _rmse, _mae = self.batch_error(case)
+            metrics["rmse"] += [_rmse]
+            metrics["mae"] += [_mae]
+
+        if log:
+            self.writter.add_scalar("valid/RMSE", mean(metrics["rmse"]), epoch)
+            self.writter.add_scalar("valid/MAE", mean(metrics["mae"]), epoch)
+
+    def train_loop(self, epoch):
+        rmse = mae = 0
+        n = 0
+
+        self.model.train()
+        # training loop
+        for minibatch in self.train_loader:
+            minibatch = minibatch.to(torch.device("cuda"))
+            minibatch = ohwmv(minibatch)
+            _rmse, _mae = self.apply_gradient(minibatch, self.t, self.decay)
+            rmse += _rmse
+            mae += _mae
+            n += 1
+
+        self.writter.add_scalar("train/rmse", rmse / n, epoch)
+        self.writter.add_scalar("train/mae", mae / n, epoch)
 
     def calculate_errors(self, s):
         rmse = 0
