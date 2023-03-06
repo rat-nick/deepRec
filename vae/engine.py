@@ -1,6 +1,6 @@
 import torch
 
-from data.dataset import MyDataset as Dataset
+from data.dataAccess import MyDataset as Dataset
 
 from .model import Model
 
