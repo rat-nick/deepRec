@@ -1,14 +1,13 @@
 from surprise import SVD, BaselineOnly, NormalPredictor, KNNWithZScore
-from surprise import Trainset, Dataset as sDataset, Reader
+from surprise import Trainset
 from data.dataset import Dataset
 import pandas as pd
 from .random import RandomPredictior
-from surprise import accuracy
 from collections import defaultdict
 from itertools import groupby
-import numpy as np
 import argparse
 import time
+from sklearn.metrics import mean_absolute_error, mean_squared_error, ndcg_score
 from . import metrics as mt
 
 parser = argparse.ArgumentParser()
@@ -17,7 +16,30 @@ parser.add_argument("--ratings-path", type=str)
 parser.add_argument("--result-path", type=str)
 parser.add_argument("--ranking", action="store_true")
 parser.add_argument("--leave-one-out", action="store_true")
+parser.add_argument("--ndcg", action="store_true")
+
 args = parser.parse_args()
+
+project = lambda lst, i: [t[i] for t in lst]
+
+
+def pred2dict(pred):
+    pred_dict = {
+        k: [(t[1], t[3]) for t in list(g)] for k, g in groupby(pred, key=lambda x: x[0])
+    }
+
+    return pred_dict
+
+
+def pred2dict2(pred):
+    pred = sorted(pred, key=lambda x: x[2], reverse=True)
+    pred_dict = defaultdict(list)
+    for u, i, true, pred, _ in pred:
+        if any(item[0] == i for item in pred_dict[u]):
+            continue
+        pred_dict[u].append((i, true, pred))
+
+    return pred_dict
 
 
 def precision_recall_at_k(predictions, k=10, threshold=3.5):
@@ -67,6 +89,15 @@ def contains_item(set, i):
 def antitestset_for_users(test, train: Trainset):
     ats = list()
 
+    # for u, i, r in train.all_ratings():
+    #     if not any(
+    #         train.to_inner_uid(tr[0]) == u and train.to_inner_iid(tr[1]) == i
+    #         for tr in test
+    #     ):
+    #         ats += [(train.to_raw_uid(u), train.to_raw_iid(i), 0)]
+
+    # return ats
+
     for u in test:
         uid = train.to_inner_uid(u)
         for i in train.all_items():
@@ -77,10 +108,7 @@ def antitestset_for_users(test, train: Trainset):
 
 
 ds = Dataset(args.ratings_path, user_threshold=args.user_threshold)
-
-rnd = RandomPredictior()
-bl = BaselineOnly()
-algo = KNNWithZScore()
+print(ds.n_items)
 algos = {
     "random": RandomPredictior(),
     "baseline": BaselineOnly(),
@@ -90,11 +118,11 @@ algos = {
 }
 
 
-def ranking_eval(res_path, ds, algos):
-    metrics = defaultdict(list)
+def ranking_eval(ds, algos, metrics):
+
     for train, test in ds.fihoUserKFold(5):
         test_users = {x[0] for x in test}
-        test2 = test + antitestset_for_users(test_users, train)
+        full_testset = test + antitestset_for_users(test_users, train)
 
         for key in algos:
             # fit the algo and time it
@@ -106,33 +134,50 @@ def ranking_eval(res_path, ds, algos):
 
             # test for rmse and mae
             pred = algos[key].test(test)
-
-            rmse = accuracy.rmse(pred, False)
-            mae = accuracy.mae(pred, False)
-
-            metrics[f"{key}_rmse"] += [rmse]
-            metrics[f"{key}_mae"] += [mae]
+            pd = pred2dict2(pred)
+            for user in pd:
+                y_true = project(pd[user], 1)
+                y_pred = project(pd[user], 2)
+                metrics[f"{key}_rmse"] += [
+                    mean_squared_error(y_true, y_pred, squared=False)
+                ]
+                metrics[f"{key}_mae"] += [mean_absolute_error(y_true, y_pred)]
 
             # test for ranking metrics
             start = time.time()
-            pred = algos[key].test(test2)
+            pred = algos[key].test(full_testset)
             end = time.time()
 
             metrics[f"{key}_predtime"] += [end - start]
 
             for k in [10, 20, 50, 100]:
                 p, r = precision_recall_at_k(pred, k)
-                p = np.mean(list(p.values()))
-                r = np.mean(list(r.values()))
-                metrics[f"{key}_p{k}"] += [p]
-                metrics[f"{key}_r{k}"] += [r]
-
-        pd.DataFrame.from_dict(metrics).to_csv(res_path)
+                metrics[f"{key}_p@{k}"] += list(p.values())
+                metrics[f"{key}_r@{k}"] += list(r.values())
 
 
-def loo_eval(res_path, ds, algos):
-    metrics = defaultdict(list)
+def ndcg_eval(ds, algos, metrics):
+    for train, test in ds.fihoUserKFold(5):
+        test_users = {x[0] for x in test}
+        ats = antitestset_for_users(test_users, train)
 
+        fulltest = test + ats
+
+        for key in algos:
+
+            algos[key].fit(train)
+            pred = algos[key].test(fulltest)
+            pd = pred2dict2(pred)
+
+            for user in pd:
+                y_true = project(pd[user], 1)
+                y_pred = project(pd[user], 2)
+
+                for k in [10, 100]:
+                    metrics[f"{key}_ndcg@{k}"] += [ndcg_score([y_true], [y_pred], k=k)]
+
+
+def loo_eval(ds, algos, metrics):
     for train, test in ds.looUserKFold(5):
         test_users = {x[0] for x in test}
         test2 = test + antitestset_for_users(test_users, train)
@@ -140,21 +185,23 @@ def loo_eval(res_path, ds, algos):
         for key in algos:
             algos[key].fit(train)
             pred = algos[key].test(test2)
-            pred_dict = {
-                k: [(t[1], t[3]) for t in list(g)]
-                for k, g in groupby(pred, key=lambda x: x[0])
-            }
+            pred_dict = pred2dict(pred)
 
             arhr = mt.AverageReciprocalHitRank(pred_dict, test)
-            metrics[f"{key}_arhr"] += [arhr]
+            metrics[f"{key}_arhr"] += arhr
             for k in [1, 5, 10, 20]:
                 hr = mt.CumulativeHitRate(k, pred_dict, test)
-                metrics[f"{key}_hr@{k}"] += [hr]
-
-        pd.DataFrame.from_dict(metrics).to_csv(res_path)
+                metrics[f"{key}_hr@{k}"] += hr
 
 
-if args.leave_one_out:
-    loo_eval(args.result_path, ds, algos)
+metrics = defaultdict(list)
 if args.ranking:
-    ranking_eval(args.result_path, ds, algos)
+    ranking_eval(ds, algos, metrics)
+if args.leave_one_out:
+    loo_eval(ds, algos, metrics)
+if args.ndcg:
+    ndcg_eval(ds, algos, metrics)
+
+pd.DataFrame(dict([(k, pd.Series(v)) for k, v in metrics.items()])).to_csv(
+    args.result_path
+)

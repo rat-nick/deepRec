@@ -46,6 +46,7 @@ def HitRate(topNPredicted, leftOutPredictions):
 def CumulativeHitRate(k, topNPredicted, leftOutPredictions, ratingCutoff=3.5):
     hits = 0
     total = 0
+    res = list()
     # For each left-out rating
     for userID, leftOutMovieID, actualRating in leftOutPredictions:
         # Only look at ability to recommend things the users actually liked...
@@ -59,10 +60,12 @@ def CumulativeHitRate(k, topNPredicted, leftOutPredictions, ratingCutoff=3.5):
                     hit = True
                     break
             if hit:
-                hits += 1
-            total += 1
+                res += [1]
+            else:
+                res += [0]
+
     # Compute overall precision
-    return hits / total
+    return res
 
 
 def RatingHitRate(topNPredicted, leftOutPredictions):
@@ -87,6 +90,7 @@ def RatingHitRate(topNPredicted, leftOutPredictions):
 def AverageReciprocalHitRank(topNPredicted, leftOutPredictions):
     summation = 0
     total = 0
+    res = list()
     # For each left-out rating
     for userID, leftOutMovieID, _ in leftOutPredictions:
         # Is it in the predicted top N for this user?
@@ -100,9 +104,10 @@ def AverageReciprocalHitRank(topNPredicted, leftOutPredictions):
                 hitRank = rank
                 break
         if hitRank > 0:
-            summation += 1.0 / hitRank
-        total += 1
-    return summation / total
+            summation = 1.0 / hitRank
+        res += [summation]
+
+    return res
 
 
 # What percentage of users have at least one "good" recommendation
