@@ -2,14 +2,26 @@ import surprise
 from sklearn.model_selection import KFold
 from collections import defaultdict
 import pandas as pd
+from surprise import Trainset
+from typing import List, Tuple
 
 diff = lambda x, y: pd.concat([x, y, y]).drop_duplicates(keep=False)
 
 
 class Dataset:
-    def __init__(self, path: str = None, sep: str = ",", user_threshold: int = 20):
+    def __init__(
+        self,
+        path: str = None,
+        sep: str = ",",
+        user_threshold: int = 20,
+        less_than: bool = False,
+    ):
         df = pd.read_csv(path, sep=sep, engine="python", encoding="latin-1")
-        df = df.groupby("user").filter(lambda x: len(x) >= user_threshold)
+        df = df.groupby("user").filter(
+            lambda x: len(x) <= user_threshold
+            if less_than
+            else len(x) >= user_threshold
+        )
         df = df.iloc[:, :3]
         self.dataset = surprise.Dataset.load_from_df(
             df, surprise.Reader(line_format="user item rating")
@@ -56,7 +68,9 @@ class Dataset:
 
             yield train_data, test_data
 
-    def fihoUserKFold(self, n_splits: int = 5, ho_ratio: float = 0.2):
+    def fihoUserKFold(
+        self, n_splits: int = 5, ho_ratio: float = 0.2
+    ) -> Tuple[Trainset, List[Tuple]]:
 
         for train_data, test_data in self.userKFold(n_splits):
             train = pd.DataFrame(train_data, columns=["user", "item", "rating"])

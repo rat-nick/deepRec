@@ -146,7 +146,7 @@ class Trainer:
                 rec = rec[0]
 
                 rec[fi > 0] = 0.0
-
+                metrics[f"num_ratings1"] += [fi.count_nonzero().item()]
                 metrics[f"ndcg@100"] += [tm.ndcg(rec, ho, 100).item()]
                 metrics[f"ndcg@10"] += [tm.ndcg(rec, ho, 10).item()]
                 for k in ks:
@@ -180,7 +180,7 @@ class Trainer:
 
                 rec = rec[0]
                 rec[fi > 0] = 0.0
-
+                metrics[f"num_ratings2"] += [fi.count_nonzero().item()]
                 metrics[f"arhr"] += [tm.mrr(rec, ho).item()]
                 for k in ks:
                     metrics[f"hr@{k}"] += [tm.hr(rec, ho, k).item()]
@@ -195,6 +195,7 @@ class Trainer:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--cuda", action="store_true", help="Should we use cuda")
+    parser.add_argument("--lt", action="store_true")
     parser.add_argument("--user-threshold", type=int, default=0)
     parser.add_argument("--result-path", type=str)
     parser.add_argument("--ratings-path", type=str)
@@ -205,6 +206,7 @@ if __name__ == "__main__":
         if args.cuda and torch.cuda.is_available()
         else torch.device("cpu")
     )
+    lt = True
 
     dataset = Dataset(args.ratings_path, ut=args.user_threshold)
     i = 0

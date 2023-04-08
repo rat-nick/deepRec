@@ -91,6 +91,7 @@ def AverageReciprocalHitRank(topNPredicted, leftOutPredictions):
     summation = 0
     total = 0
     res = list()
+    nr = list()
     # For each left-out rating
     for userID, leftOutMovieID, _ in leftOutPredictions:
         # Is it in the predicted top N for this user?
@@ -106,6 +107,7 @@ def AverageReciprocalHitRank(topNPredicted, leftOutPredictions):
         if hitRank > 0:
             summation = 1.0 / hitRank
         res += [summation]
+        nr += [len(topNPredicted[int(userID)])]
 
     return res
 

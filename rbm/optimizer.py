@@ -93,7 +93,7 @@ class Optimizer:
             fi = onehot_to_ratings(fi)[0]
             rec[fi > 0] = 0
             ks = [1, 5, 10, 20]
-
+            metrics["n_ratings2"] += [fi.count_nonzero().item()]
             metrics["arhr"] += [tm.retrieval_reciprocal_rank(rec, ho > 3.5).item()]
             for k in ks:
                 metrics[f"hr@{k}"] += [tm.retrieval_hit_rate(rec, ho > 3.5, k).item()]
@@ -107,6 +107,7 @@ class Optimizer:
         for case in loader:
             case = case[0].to(torch.device("cuda"))
             fi, ho = split(case)
+            metrics["n_ratings1"] += [fi.count_nonzero().item()]
             fi = ohwmv(fi).unsqueeze(0)
 
             rec = self.model(fi)
@@ -114,6 +115,7 @@ class Optimizer:
             fi = onehot_to_ratings(fi)
             rec[fi[0] > 0] = 0
             ks = [10, 20, 50, 100]
+
             metrics["ndcg@10"] += [tm.retrieval_normalized_dcg(rec, ho, 10).item()]
             metrics["ndcg@100"] += [tm.retrieval_normalized_dcg(rec, ho, 100).item()]
 
@@ -138,7 +140,7 @@ class Optimizer:
             _rmse, _mae = self.batch_error(case)
             metrics["rmse"] += [_rmse]
             metrics["mae"] += [_mae]
-
+            metrics["n_ratings3"] += [case.count_nonzero().item()]
         if log:
             self.writter.add_scalar("valid/RMSE", mean(metrics["rmse"]), epoch)
             self.writter.add_scalar("valid/MAE", mean(metrics["mae"]), epoch)

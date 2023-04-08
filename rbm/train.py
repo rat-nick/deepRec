@@ -51,7 +51,7 @@ for train, valid, test in dataset.userKFold(5, kind="3-way"):
     # load best model
     rbm.load("rbm/rbm.pt")
 
-    loader = DataLoader(testset, batch_size=1, shuffle=True)
+    loader = DataLoader(testset, batch_size=1, shuffle=False)
     opt.leave_one_out_evaluation(metrics, 0, loader)
     opt.ranking_evaluation(metrics, 0, loader)
     opt.reconstruction_validation(metrics, 0, loader)

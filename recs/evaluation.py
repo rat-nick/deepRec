@@ -122,6 +122,9 @@ def ranking_eval(ds, algos, metrics):
 
     for train, test in ds.fihoUserKFold(5):
         test_users = {x[0] for x in test}
+        metrics["num_ratings1"] += [
+            len(train.ur[train.to_inner_uid(u)]) for u in test_users
+        ]
         full_testset = test + antitestset_for_users(test_users, train)
 
         for key in algos:
@@ -136,6 +139,9 @@ def ranking_eval(ds, algos, metrics):
             pred = algos[key].test(test)
             pd = pred2dict2(pred)
             for user in pd:
+                metrics[f"{key}_n_ratings1"] += [
+                    len(train.ur[train.to_inner_uid(user)])
+                ]
                 y_true = project(pd[user], 1)
                 y_pred = project(pd[user], 2)
                 metrics[f"{key}_rmse"] += [
@@ -154,6 +160,15 @@ def ranking_eval(ds, algos, metrics):
                 p, r = precision_recall_at_k(pred, k)
                 metrics[f"{key}_p@{k}"] += list(p.values())
                 metrics[f"{key}_r@{k}"] += list(r.values())
+
+            pd = pred2dict2(pred)
+
+            for user in pd:
+                y_true = project(pd[user], 1)
+                y_pred = project(pd[user], 2)
+
+                for k in [10, 100]:
+                    metrics[f"{key}_ndcg@{k}"] += [ndcg_score([y_true], [y_pred], k=k)]
 
 
 def ndcg_eval(ds, algos, metrics):
@@ -180,6 +195,9 @@ def ndcg_eval(ds, algos, metrics):
 def loo_eval(ds, algos, metrics):
     for train, test in ds.looUserKFold(5):
         test_users = {x[0] for x in test}
+        metrics["num_ratings2"] += [
+            len(train.ur[train.to_inner_uid(u)]) for u in test_users
+        ]
         test2 = test + antitestset_for_users(test_users, train)
 
         for key in algos:
@@ -197,11 +215,16 @@ def loo_eval(ds, algos, metrics):
 metrics = defaultdict(list)
 if args.ranking:
     ranking_eval(ds, algos, metrics)
+    pd.DataFrame(dict([(k, pd.Series(v)) for k, v in metrics.items()])).to_csv(
+        args.result_path
+    )
 if args.leave_one_out:
     loo_eval(ds, algos, metrics)
+    pd.DataFrame(dict([(k, pd.Series(v)) for k, v in metrics.items()])).to_csv(
+        args.result_path
+    )
 if args.ndcg:
     ndcg_eval(ds, algos, metrics)
-
-pd.DataFrame(dict([(k, pd.Series(v)) for k, v in metrics.items()])).to_csv(
-    args.result_path
-)
+    pd.DataFrame(dict([(k, pd.Series(v)) for k, v in metrics.items()])).to_csv(
+        args.result_path
+    )
