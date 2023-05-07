@@ -24,7 +24,7 @@ class Model(nn.Module):
         if device == torch.device("cuda"):
             self.encoder.to("cuda")
             self.decoder.to("cuda")
-
+        self.device = device
         self.apply(init_weights)
 
         if path != "":
@@ -60,7 +60,7 @@ class Model(nn.Module):
         torch.save(self.state_dict(), path)
 
     def load(self, path=DEFAULT_PATH):
-        self.load_state_dict(torch.load(path))
+        self.load_state_dict(torch.load(path, map_location=self.device))
 
     @property
     def latestLoss(self):
