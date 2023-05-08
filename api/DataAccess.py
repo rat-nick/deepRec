@@ -17,6 +17,10 @@ class DataAccess:
             "../data/ml-1m/ratings.csv",
             Reader(line_format="user item rating timestamp", sep=",", skip_lines=1),
         ).build_full_trainset()
+        ids = self.inner2raw([i for i in self.translator.all_items()])
+        ids = list(map(int, ids))
+        valid_ids = self.movies.index.intersection(ids)
+        self.movies = self.movies.loc[valid_ids]
         pass
 
     def inner2raw(self, movies):
