@@ -31,7 +31,7 @@ class DataAccess:
 
     def attachInfo(self, ids):
         ids = list(map(int, ids))
-        res = self.movies.loc[ids].to_dict(orient="index", index=True)
+        res = self.movies.loc[ids].to_dict(orient="index")
         res = flatten_dicts(res)
         return res
 
