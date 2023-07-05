@@ -1,21 +1,23 @@
 import argparse
 from collections import defaultdict
-from tabulate import tabulate
+from statistics import mean
+
+import numpy as np
+import pandas as pd
 import torch
+from sklearn.model_selection import train_test_split
+from tabulate import tabulate
 from torch.optim import Adam
 from torch.utils.data import DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
-import numpy as np
+
 import evaluation
 import metrics.tensor as tm
-from sklearn.model_selection import train_test_split
+from utils.tensors import leave_one_out, split
+
+from .dataset import Dataset
 from .model import Model as VAE
 from .optimizer import elbo
-from .dataset import Dataset
-from utils.tensors import split, leave_one_out
-import pandas as pd
-import numpy as np
-from statistics import mean
 
 PATIENCE = 10
 

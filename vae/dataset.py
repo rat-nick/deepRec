@@ -1,11 +1,18 @@
+import logging
+
+import numpy as np
+import pandas as pd
 import torch
-from surprise import Dataset as sDataset, Reader
+from sklearn.model_selection import KFold, train_test_split
+from surprise import Dataset as sDataset
+from surprise import Reader
 from torch import Tensor
 from torch.utils.data import Dataset as tDataset
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split, KFold
+
 from data.dataset import Dataset as DS
+
+logger = logging.getLogger("vae.dataset")
+logging.basicConfig(level=logging.DEBUG)
 
 
 class Dataset(tDataset):
@@ -15,12 +22,13 @@ class Dataset(tDataset):
         ut: int = 0,
         data=None,
         device=torch.device("cpu"),
+        rs: int = 5,
     ):
         super(tDataset, self).__init__()
-
+        self.rs = rs
         if data == None:
             self.ds = DS(ratings_path, user_threshold=ut)
-            self.data = torch.zeros((self.ds.n_users, self.ds.n_items))
+            logger.info("Finished creating base dataset object")
         else:
             self.data = data
             for d in self.data:
@@ -34,41 +42,51 @@ class Dataset(tDataset):
 
     @property
     def n_items(self):
-        return self.data.shape[1]
+        return self.ds.n_items
 
     @property
     def n_users(self):
-        return self.data.shape[0]
+        return self.ds.n_users
 
     @property
     def ratings_scale(self):
-        return 5
+        return self.rs
 
     def userKFold(self, n_splits=5, kind: str = "2-way"):
         for train, test in self.ds.userKFold(n_splits):
 
-            train_data = torch.zeros((self.ds.n_users, self.ds.n_items))
-            test_data = torch.zeros((self.ds.n_users, self.ds.n_items))
+            size = len(train)
+            train_data = torch.zeros((size, self.ds.n_items))
+            user = 0
+            for _, value in train.items():
+                for item, rating in value:
+                    train_data[user][item] = 1.0 if float(rating) >= 3.5 else 0
+                user += 1
 
-            for u, i, r in train:
-                train_data[int(u)][int(i)] = float(r)
+            size = len(test)
+            test_data = torch.zeros((size, self.ds.n_items))
+            user = 0
+            for _, value in test.items():
+                for item, rating in value:
+                    test_data[user][item] = 1.0 if float(rating) >= 3.5 else 0
+                user += 1
 
-            for u, i, r in test:
-                test_data[int(u)][int(i)] = float(r)
-
-            train_data = train_data[train_data.sum(dim=1) != 0]
-            test_data = test_data[test_data.sum(dim=1) != 0]
             if kind == "2-way":
                 yield Dataset(data=train_data), Dataset(data=test_data)
 
             elif kind == "3-way":
-                valid_data, test_data = train_test_split(
-                    test_data, test_size=0.5, shuffle=True, random_state=42
+                valid_idx, test_idx = train_test_split(
+                    list(range(len(test_data))),
+                    test_size=0.5,
+                    shuffle=True,
+                    random_state=42,
                 )
+                valid_data = test_data[valid_idx]
+
                 yield (
                     Dataset(data=train_data),
                     Dataset(data=valid_data),
-                    Dataset(data=test_data),
+                    Dataset(data=test_data[test_idx]),
                 )
 
 

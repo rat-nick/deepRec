@@ -1,11 +1,15 @@
-import surprise
-from sklearn.model_selection import KFold
-from collections import defaultdict
-import pandas as pd
-from surprise import Trainset
+import logging
 from typing import List, Tuple
 
+import pandas as pd
+import surprise
+from sklearn.model_selection import KFold
+from surprise import Trainset
+
 diff = lambda x, y: pd.concat([x, y, y]).drop_duplicates(keep=False)
+
+logger = logging.getLogger("data.dataset")
+logging.basicConfig(level=logging.DEBUG)
 
 
 class Dataset:
@@ -15,19 +19,25 @@ class Dataset:
         sep: str = ",",
         user_threshold: int = 20,
         less_than: bool = False,
+        sparse: bool = False,
     ):
-        df = pd.read_csv(path, sep=sep, engine="python", encoding="latin-1")
+        df = pd.read_csv(
+            path, sep=sep, engine="python", encoding="latin-1", low_memory=True
+        )
+        logger.info("Loaded dataset into memory")
         df = df.groupby("user").filter(
             lambda x: len(x) <= user_threshold
             if less_than
             else len(x) >= user_threshold
         )
         df = df.iloc[:, :3]
+        logger.info("Performed cleaning of dataset")
         self.dataset = surprise.Dataset.load_from_df(
             df, surprise.Reader(line_format="user item rating")
         )
-
+        logger.info("Created surprise dataset")
         self.trainset = self.dataset.build_full_trainset()
+        logger.info("Finished building surprise trainset")
 
     def all_users(self):
         return self.trainset.all_users()
@@ -55,18 +65,10 @@ class Dataset:
         users = [u for u in self.all_users()]
 
         for trainset, testset in kf.split(users):
-            train_data = list()
-            test_data = list()
+            train = {key: self.trainset.ur[key] for key in trainset}
+            test = {key: self.trainset.ur[key] for key in testset}
 
-            for key in trainset:
-                for i, r in self.trainset.ur[key]:
-                    train_data += [(key, i, r)]
-
-            for key in testset:
-                for i, r in self.trainset.ur[key]:
-                    test_data += [(key, i, r)]
-
-            yield train_data, test_data
+            yield train, test
 
     def fihoUserKFold(
         self, n_splits: int = 5, ho_ratio: float = 0.2

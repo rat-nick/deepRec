@@ -1,9 +1,10 @@
+import random
 from math import sqrt
 from typing import Tuple
-import random
+
 import torch
-from sklearn.model_selection import train_test_split
 import torch.nn.functional as F
+from sklearn.model_selection import train_test_split
 
 mae = torch.nn.L1Loss()
 mse = torch.nn.MSELoss()
@@ -104,19 +105,21 @@ def split(
     all_but_first = lambda x: tuple([t for t in range(1, len(x.shape))])
     reduce_to_first = lambda x: x.sum(dim=all_but_first(x))
 
-    if len(t.shape) == 1:
-        idx = t.nonzero()
-    else:
-        idx = reduce_to_first(t).nonzero()
-
+    # if len(t.shape) == 1:
+    #     idx = t.nonzero()
+    # else:
+    #     idx = reduce_to_first(t.nonzero())
+    idx = t.nonzero()
     train_idx, test_idx = train_test_split(
         idx, test_size=ratio, random_state=42, shuffle=True
     )
     train = torch.zeros_like(t)
-    train[train_idx] = t[train_idx]
-    test = torch.zeros_like(t)
-    test[test_idx] = t[test_idx]
+    idx = train_idx
+    train[idx[:, 0], idx[:, 1]] = t[idx[:, 0], idx[:, 1]]
 
+    test = torch.zeros_like(t)
+    idx = test_idx
+    test[idx[:, 0], idx[:, 1]] = t[idx[:, 0], idx[:, 1]]
     return train, test
 
 
