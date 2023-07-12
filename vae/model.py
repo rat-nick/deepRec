@@ -7,7 +7,7 @@ from pytorch_lightning.callbacks import EarlyStopping
 from torch.utils.data import DataLoader
 
 from utils.tensors import split
-from vae.dataset import Dataset
+from vae.dataset import UserRatingsDataset
 
 DEFAULT_PATH = "vae/vae.pt"
 
@@ -31,13 +31,15 @@ class Encoder(nn.Module):
         self.deepNN = nn.Sequential()
         i = 0
         for layer in layers:
-            self.deepNN.add_module(f"ff{i}", nn.Linear(input_size, layer))
+            self.deepNN.add_module(
+                f"ff{i}", nn.Linear(input_size, layer, dtype=torch.float16)
+            )
             self.deepNN.add_module(f"activation{i}", nn.Tanh())
             input_size = layer
             i += 1
 
-        self.mu = nn.Linear(layer, output_size)
-        self.sigma = nn.Linear(layer, output_size)
+        self.mu = nn.Linear(layer, output_size, dtype=torch.float16)
+        self.sigma = nn.Linear(layer, output_size, dtype=torch.float16)
 
     def forward(self, inputs):
         tensor = self.deepNN(inputs)
@@ -56,12 +58,16 @@ class Decoder(nn.Module):
 
         i = 0
         for layer in layers:
-            self.deepNN.add_module(f"ff{i}", nn.Linear(input_size, layer))
+            self.deepNN.add_module(
+                f"ff{i}", nn.Linear(input_size, layer, dtype=torch.float16)
+            )
             self.deepNN.add_module(f"activation{i}", nn.Tanh())
             input_size = layer
             i += 1
 
-        self.deepNN.add_module("output", nn.Linear(layer, output_size))
+        self.deepNN.add_module(
+            "output", nn.Linear(layer, output_size, dtype=torch.float16)
+        )
         # self.deepNN.add_module("final_activation", nn.Sigmoid())
 
     def forward(self, inputs):
@@ -96,12 +102,13 @@ class Model(pl.LightningModule):
         return eps.mul(sigma).add_(mu)
 
     def forward(self, x):
-        # FIXME: x should be a binary vector
+        x = x.to_dense()
         mu, _ = self.encoder(x)
         tensor = self.decoder(mu)
         return tensor
 
     def training_step(self, batch, batch_idx):
+        batch = batch.to_dense()
         batch = self.drop(batch)
         mu, logvar = self.encoder(batch)
         tensor = self.reparametrize(mu, logvar)
@@ -111,6 +118,7 @@ class Model(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        batch = batch.to_dense()
         input, hold = split(batch)
         tensor = self.forward(input)
         tensor[input > 0] = 0.0
@@ -125,6 +133,7 @@ class Model(pl.LightningModule):
         return metrics
 
     def test_step(self, batch, batch_idx):
+        batch = batch.to_dense()
         input, hold = split(batch)
         tensor = self.forward(input)
         # TODO: implement following validation metrics:
@@ -150,21 +159,27 @@ class Model(pl.LightningModule):
         self.load_state_dict(torch.load(path, map_location=self.device))
 
 
-# data-loaders
-dataset = Dataset("data/ml-1m/ratings.csv", ut=20, rs=5)
-train, valid, test = next(dataset.userKFold(5, kind="3-way"))
-train = DataLoader(train, batch_size=100, num_workers=12)
-valid = DataLoader(valid, batch_size=100, num_workers=12)
-test = DataLoader(test, batch_size=100, num_workers=12)
+if __name__ == "__main__":
+    # data-loaders
+    cutoff = lambda x: 1 if x >= 3.5 else 0  # function for generating implicit ratings
 
-# model definition
-model = Model(dataset.n_items, 200)
+    dataset = UserRatingsDataset(
+        "data/ml-1m/ratings.csv", threshold=20, rating_function=cutoff
+    )
+    train, valid, test = dataset.tvt_datasets()
 
-# traning
-trainer = pl.Trainer(
-    max_epochs=200,
-    log_every_n_steps=10,
-    callbacks=[EarlyStopping(monitor="ndcg@100", mode="max", patience=20)],
-)
-trainer.fit(model, train, valid)
-trainer.test(model, test)
+    train = DataLoader(train, batch_size=100, num_workers=1)
+    valid = DataLoader(valid, batch_size=100, num_workers=1)
+    test = DataLoader(test, batch_size=100, num_workers=1)
+
+    # model definition
+    model = Model(dataset.n_items, 200)
+
+    # traning
+    trainer = pl.Trainer(
+        max_epochs=200,
+        log_every_n_steps=10,
+        callbacks=[EarlyStopping(monitor="ndcg@100", mode="max", patience=20)],
+    )
+    trainer.fit(model, train, valid)
+    trainer.test(model, test)

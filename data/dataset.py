@@ -19,19 +19,32 @@ class Dataset:
         sep: str = ",",
         user_threshold: int = 20,
         less_than: bool = False,
+        # filter_strategies: List[function] = [],
         sparse: bool = False,
     ):
         df = pd.read_csv(
             path, sep=sep, engine="python", encoding="latin-1", low_memory=True
         )
-        logger.info("Loaded dataset into memory")
+        logger.debug("Loaded pandas dataframe into memory")
+
         df = df.groupby("user").filter(
             lambda x: len(x) <= user_threshold
             if less_than
             else len(x) >= user_threshold
         )
+
+        logger.debug("Applying filter strategies to dataset")
+        # FIXME: this
+        # we want to apply all filter strategies
+        # for fs in filter_strategies:
+        #     df = fs(df)
+
+        logger.debug("Finished applying filter strategies to dataset")
+
+        # remove all but the first 3 columns
         df = df.iloc[:, :3]
-        logger.info("Performed cleaning of dataset")
+        logger.debug("Finished cleaning")
+
         self.dataset = surprise.Dataset.load_from_df(
             df, surprise.Reader(line_format="user item rating")
         )
