@@ -9,7 +9,7 @@ from surprise import Trainset
 diff = lambda x, y: pd.concat([x, y, y]).drop_duplicates(keep=False)
 
 logger = logging.getLogger("data.dataset")
-logging.basicConfig(level=logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 
 
 class Dataset:

@@ -32,14 +32,14 @@ class Encoder(nn.Module):
         i = 0
         for layer in layers:
             self.deepNN.add_module(
-                f"ff{i}", nn.Linear(input_size, layer, dtype=torch.float16)
+                f"ff{i}", nn.Linear(input_size, layer, dtype=torch.float32)
             )
             self.deepNN.add_module(f"activation{i}", nn.Tanh())
             input_size = layer
             i += 1
 
-        self.mu = nn.Linear(layer, output_size, dtype=torch.float16)
-        self.sigma = nn.Linear(layer, output_size, dtype=torch.float16)
+        self.mu = nn.Linear(layer, output_size, dtype=torch.float32)
+        self.sigma = nn.Linear(layer, output_size, dtype=torch.float32)
 
     def forward(self, inputs):
         tensor = self.deepNN(inputs)
@@ -59,14 +59,14 @@ class Decoder(nn.Module):
         i = 0
         for layer in layers:
             self.deepNN.add_module(
-                f"ff{i}", nn.Linear(input_size, layer, dtype=torch.float16)
+                f"ff{i}", nn.Linear(input_size, layer, dtype=torch.float32)
             )
             self.deepNN.add_module(f"activation{i}", nn.Tanh())
             input_size = layer
             i += 1
 
         self.deepNN.add_module(
-            "output", nn.Linear(layer, output_size, dtype=torch.float16)
+            "output", nn.Linear(layer, output_size, dtype=torch.float32)
         )
         # self.deepNN.add_module("final_activation", nn.Sigmoid())
 
@@ -127,20 +127,24 @@ class Model(pl.LightningModule):
         # * arhr and hr
         metrics = {}
         metrics["ndcg@100"] = tmf.retrieval_normalized_dcg(tensor, hold, 100)
-        self.log(
-            "ndcg@100", metrics["ndcg@100"], on_step=False, on_epoch=True, prog_bar=True
-        )
+        metrics["hr@1"] = tmf.retrieval_hit_rate(tensor, hold, 1)
+        metrics["hr@10"] = tmf.retrieval_hit_rate(tensor, hold, 10)
+        self.log_dict(metrics, on_epoch=True, prog_bar=True)
         return metrics
 
     def test_step(self, batch, batch_idx):
         batch = batch.to_dense()
         input, hold = split(batch)
         tensor = self.forward(input)
+        tensor[input > 0] = 0.0
         # TODO: implement following validation metrics:
         # * recall and precision
         # * arhr and hr
         metrics = {}
         metrics["ndcg@100"] = tmf.retrieval_normalized_dcg(tensor, hold, 100)
+        metrics["hr@1"] = tmf.retrieval_hit_rate(tensor, hold, 1)
+        metrics["hr@10"] = tmf.retrieval_hit_rate(tensor, hold, 10)
+        self.log_dict(metrics, on_epoch=True)
         return metrics
 
     def configure_optimizers(self):
